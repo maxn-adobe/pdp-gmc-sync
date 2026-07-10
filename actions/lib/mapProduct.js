@@ -10,25 +10,19 @@ function toMicros (priceValue, currencyCode = 'USD') {
 }
 
 function sanitizeOfferId (id) {
-  return String(id ?? '').trim()
-}
-
-function composeLink (baseUrl, slug) {
-  if (!baseUrl) throw new Error('defaults.pdpBaseUrl is not configured')
-  const base = String(baseUrl).replace(/\/$/, '')
-  const path = String(slug ?? '').replace(/^\/+/, '')
-  return `${base}/${path}`
+  return String(id ?? '').trim().replace(/:/g, '-')
 }
 
 function mapProduct (row) {
   const offerId = sanitizeOfferId(row.product_id)
   if (!offerId) throw new Error('missing product_id')
+  if (!row.link) throw new Error('missing link')
 
   const rawTitle = String(row.title ?? '')
   const attrs = {
     title: rawTitle.length > 150 ? rawTitle.slice(0, 150) : rawTitle,
     description: row.description == null ? '' : String(row.description),
-    link: composeLink(defaults.pdpBaseUrl, row.url_slug),
+    link: row.link,
     imageLink: row.initial_pretty_preferred_view_url || row.image_link || '',
     availability: row.availability || defaults.availability || 'IN_STOCK',
     condition: row.condition || defaults.condition || 'NEW',
@@ -53,4 +47,4 @@ function mapProduct (row) {
   }
 }
 
-module.exports = { mapProduct, toMicros, sanitizeOfferId, composeLink }
+module.exports = { mapProduct, toMicros, sanitizeOfferId }

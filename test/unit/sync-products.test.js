@@ -26,7 +26,7 @@ const validEnv = {
 const goodRow = {
   product_id: 'zaz-1',
   title: 'A thing',
-  url_slug: 'print/thing/zaz-1',
+  link: 'https://www.adobe.com/express/print/mug/a-thing',
   initial_pretty_preferred_view_url: 'https://cdn.example.com/x.png',
   price: '9.99'
 }

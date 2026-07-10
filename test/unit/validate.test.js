@@ -1,9 +1,9 @@
-const { validateRow, validateRows, MAX_CHUNK } = require('../../actions/lib/validate')
+const { validateRow, validateRows, validateLink, MAX_CHUNK } = require('../../actions/lib/validate')
 
 const good = {
-  product_id: 'zaz-1',
+  product_id: 'urn:aaid:sc:VA6C2:abc',
   title: 'A thing',
-  url_slug: 'print/thing/zaz-1',
+  link: 'https://www.adobe.com/express/print/mug/a-thing',
   initial_pretty_preferred_view_url: 'https://cdn.example.com/x.png',
   price: '9.99'
 }
@@ -34,6 +34,38 @@ describe('validateRow', () => {
   test('rejects non-object rows', () => {
     expect(validateRow(null)).toMatch(/object/)
     expect(validateRow('str')).toMatch(/object/)
+  })
+})
+
+describe('link allowlist', () => {
+  test('accepts adobe.com production host', () => {
+    expect(validateLink('https://www.adobe.com/express/print/mug/x')).toBeNull()
+  })
+  test('accepts aem.live preview host', () => {
+    expect(validateLink('https://main--da-express-milo--adobecom.aem.live/express/print/mug/x')).toBeNull()
+  })
+  test('rejects http (non-HTTPS)', () => {
+    expect(validateLink('http://www.adobe.com/express/print/mug/x')).toMatch(/https/i)
+  })
+  test('rejects a non-allowlisted host', () => {
+    expect(validateLink('https://evil.example.com/express/print/mug/x')).toMatch(/allowlist/i)
+  })
+  test('rejects a malformed URL', () => {
+    expect(validateLink('not-a-url')).toMatch(/valid URL|https/i)
+  })
+  test('rejects missing link', () => {
+    expect(validateLink('')).toMatch(/missing/)
+    expect(validateLink(undefined)).toMatch(/missing/)
+  })
+  test('catches the userinfo trick (https://good.com@evil.com resolves to evil.com)', () => {
+    // new URL('https://www.adobe.com@evil.com/').hostname === 'evil.com'
+    expect(validateLink('https://www.adobe.com@evil.com/foo')).toMatch(/allowlist/i)
+  })
+  test('validateRow rejects rows with a bad link', () => {
+    expect(validateRow({ ...good, link: 'http://www.adobe.com/express/print/mug/x' })).toMatch(/https/i)
+    expect(validateRow({ ...good, link: 'https://evil.com/express/print/mug/x' })).toMatch(/allowlist/i)
+    const { link: _, ...noLink } = good
+    expect(validateRow(noLink)).toMatch(/link/i)
   })
 })
 

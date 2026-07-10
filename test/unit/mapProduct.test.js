@@ -1,4 +1,4 @@
-const { mapProduct, toMicros, sanitizeOfferId, composeLink } = require('../../actions/lib/mapProduct')
+const { mapProduct, toMicros, sanitizeOfferId } = require('../../actions/lib/mapProduct')
 const defaults = require('../../config/defaults.json')
 
 describe('toMicros', () => {
@@ -12,7 +12,6 @@ describe('toMicros', () => {
     expect(toMicros('7.5')).toEqual({ amountMicros: '7500000', currencyCode: 'USD' })
   })
   test('rounds half to nearest', () => {
-    // 0.0000015 * 1_000_000 = 1.5 -> rounds to 2
     expect(toMicros(0.0000015)).toEqual({ amountMicros: '2', currencyCode: 'USD' })
   })
   test('zero is allowed', () => {
@@ -43,33 +42,31 @@ describe('sanitizeOfferId', () => {
     expect(sanitizeOfferId(null)).toBe('')
     expect(sanitizeOfferId(undefined)).toBe('')
   })
-})
-
-describe('composeLink', () => {
-  test('strips trailing slash on base and leading slash on slug', () => {
-    expect(composeLink('https://x.com/', '/foo')).toBe('https://x.com/foo')
-    expect(composeLink('https://x.com', 'foo')).toBe('https://x.com/foo')
+  test('replaces colons with hyphens (URN normalization)', () => {
+    expect(sanitizeOfferId('urn:aaid:sc:VA6C2:2d65b3da-35d9-50f4-999e-f7d252530e37'))
+      .toBe('urn-aaid-sc-VA6C2-2d65b3da-35d9-50f4-999e-f7d252530e37')
   })
-  test('throws when base is missing', () => {
-    expect(() => composeLink('', 'foo')).toThrow(/pdpBaseUrl/)
+  test('is idempotent — running twice yields the same result', () => {
+    const once = sanitizeOfferId('urn:aaid:sc:VA6C2:abc')
+    expect(sanitizeOfferId(once)).toBe(once)
   })
 })
 
 describe('mapProduct', () => {
   const goodRow = {
-    product_id: 'zaz-123',
+    product_id: 'urn:aaid:sc:VA6C2:2d65b3da-35d9-50f4-999e-f7d252530e37',
     title: 'A nice mug',
     description: 'ceramic 11oz',
-    url_slug: 'print/mug/zaz-123',
+    link: 'https://www.adobe.com/express/print/mug/a-nice-mug',
     initial_pretty_preferred_view_url: 'https://cdn.example.com/mug.png',
     price: '12.99',
-    product_type: 'Mugs'
+    product_type: 'zazzle_mug'
   }
 
   test('produces the top-level v1 shape', () => {
     const out = mapProduct(goodRow)
     expect(out).toEqual(expect.objectContaining({
-      offerId: 'zaz-123',
+      offerId: 'urn-aaid-sc-VA6C2-2d65b3da-35d9-50f4-999e-f7d252530e37',
       contentLanguage: 'en',
       feedLabel: 'US'
     }))
@@ -90,10 +87,15 @@ describe('mapProduct', () => {
     expect(out.productAttributes.title.length).toBe(150)
   })
 
-  test('link composed from defaults.pdpBaseUrl + url_slug', () => {
+  test('link is passed through unchanged (allowlisted host)', () => {
     const out = mapProduct(goodRow)
-    expect(out.productAttributes.link.startsWith(defaults.pdpBaseUrl.replace(/\/$/, ''))).toBe(true)
-    expect(out.productAttributes.link.endsWith('/print/mug/zaz-123')).toBe(true)
+    expect(out.productAttributes.link).toBe(goodRow.link)
+  })
+
+  test('link on aem.live preview host also passes through', () => {
+    const link = 'https://main--da-express-milo--adobecom.aem.live/express/print/mug/a-nice-mug'
+    const out = mapProduct({ ...goodRow, link })
+    expect(out.productAttributes.link).toBe(link)
   })
 
   test('identifierExists=false when no gtin/gtins', () => {
@@ -122,6 +124,11 @@ describe('mapProduct', () => {
 
   test('empty product_id throws', () => {
     expect(() => mapProduct({ ...goodRow, product_id: '' })).toThrow(/product_id/)
+  })
+
+  test('missing link throws', () => {
+    const { link, ...noLink } = goodRow
+    expect(() => mapProduct(noLink)).toThrow(/link/)
   })
 
   test('falls back to base_price when price missing', () => {

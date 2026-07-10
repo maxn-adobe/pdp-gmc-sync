@@ -1,10 +1,9 @@
 {
-  "_TODO_pdpBaseUrl": "REPLACE — see handoff §20 Q2. Public canonical PDP base URL for Adobe Express Print. url_slug will be appended.",
-  "pdpBaseUrl": "https://www.adobe.com/express/CONFIRM-PATH",
-
-  "_TODO_brand": "CONFIRM — handoff §20 Q5. Static brand vs per-product.",
+  "pdpAllowedHosts": [
+    "www.adobe.com",
+    "main--da-express-milo--adobecom.aem.live"
+  ],
   "brand": "Adobe Express",
-
   "availability": "IN_STOCK",
   "condition": "NEW",
   "currency": "USD",

@@ -1,7 +1,11 @@
+const defaults = require('../../config/defaults.json')
+
 const MAX_CHUNK = 500
 const MAX_TITLE = 150
 const MAX_DESCRIPTION = 5000
 const MAX_URL = 2000
+
+const ALLOWED_HOSTS = new Set(defaults.pdpAllowedHosts || [])
 
 function isNonEmptyString (v, max) {
   if (typeof v !== 'string') return false
@@ -20,11 +24,21 @@ function isValidPrice (v) {
   return Number.isFinite(num) && num >= 0
 }
 
+function validateLink (link) {
+  if (!isNonEmptyString(link, MAX_URL)) return 'link missing or invalid'
+  let url
+  try { url = new URL(link) } catch (e) { return 'link is not a valid URL' }
+  if (url.protocol !== 'https:') return 'link must be https'
+  if (!ALLOWED_HOSTS.has(url.hostname)) return `link host not in allowlist: ${url.hostname}`
+  return null
+}
+
 function validateRow (row) {
   if (!row || typeof row !== 'object') return 'row is not an object'
   if (!isNonEmptyString(row.product_id, 100)) return 'product_id missing or invalid'
   if (!isNonEmptyString(row.title, MAX_TITLE * 4)) return 'title missing or invalid'
-  if (!isNonEmptyString(row.url_slug, MAX_URL)) return 'url_slug missing or invalid'
+  const linkErr = validateLink(row.link)
+  if (linkErr) return linkErr
   const image = row.initial_pretty_preferred_view_url || row.image_link
   if (!isNonEmptyString(image, MAX_URL)) return 'image (initial_pretty_preferred_view_url or image_link) missing or invalid'
   if (image && !/^https?:\/\//i.test(image)) return 'image link must be an http(s) URL'
@@ -53,4 +67,4 @@ function validateRows (rows) {
   return { valid, invalid }
 }
 
-module.exports = { validateRow, validateRows, MAX_CHUNK }
+module.exports = { validateRow, validateRows, validateLink, MAX_CHUNK }

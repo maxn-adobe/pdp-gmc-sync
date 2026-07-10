@@ -16,10 +16,10 @@ const sampleRow = {
   product_id: `int-test-${Date.now()}`,
   title: 'Integration test product',
   description: 'Ignore — created by automated integration tests',
-  url_slug: 'print/integration-test-product',
+  link: 'https://www.adobe.com/express/print/business-card/integration-test-product',
   initial_pretty_preferred_view_url: 'https://cdn.example.com/int-test.png',
   price: '9.99',
-  product_type: 'IntegrationTest'
+  product_type: 'zazzle_integration_test'
 }
 
 describeIf('sync-products :: integration (test account)', () => {

@@ -33,11 +33,27 @@ invocation params.
 4. **Create data sources.** Run `bootstrap-datasource` once for each
    environment; store the returned `dataSourceId` in `.env` as
    `GMC_DATASOURCE_ID_TEST` and `GMC_DATASOURCE_ID_PROD`.
-5. **Fill the `_TODO_*` keys in [`config/defaults.json`](./config/defaults.json)**
-   (PDP base URL, brand) and populate
-   [`config/category-map.json`](./config/category-map.json) if you have a
-   `product_type` → `googleProductCategory` mapping. See handoff §20 open
-   questions.
+5. **Confirm the PDP host allowlist** in
+   [`config/defaults.json`](./config/defaults.json) still matches the two
+   valid hosts (adobe.com production, aem.live preview). Populate
+   [`config/category-map.json`](./config/category-map.json) if/when a
+   `product_type` → `googleProductCategory` mapping is provided (empty map
+   = Google auto-assigns).
+
+### Expected input row shape (from the DA tool)
+
+Each object in the POST payload's `products` array must include:
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `product_id` | ✓ | Zazzle URN (`urn:aaid:sc:...`) — colons are normalized to hyphens for the GMC `offerId`. |
+| `title` | ✓ | Truncated to 150 chars. |
+| `link` | ✓ | Full PDP URL. Must be HTTPS and its hostname must be in `pdpAllowedHosts`. |
+| `initial_pretty_preferred_view_url` or `image_link` | ✓ | HTTPS image URL. |
+| `price` | ✓ | Numeric or string (`"12.99"`, `"$12.99"`). Converted to integer micros. |
+| `description` | optional | String; 5000 chars max. |
+| `product_type` | optional | Raw Zazzle string (e.g. `zazzle_hoodie`). Only used for the category-map lookup. |
+| `brand`, `availability`, `condition`, `gtin`/`gtins` | optional | Row-level overrides — see [`config/defaults.json`](./config/defaults.json). |
 
 ## Local dev
 
@@ -113,16 +129,28 @@ test/
   integration/                      # env-gated, test account only
 ```
 
-## Open items (handoff §20 — need answers before prod)
+## Open items (handoff §20)
 
-- **§20 Q2** — PDP canonical URL pattern (`config/defaults.json.pdpBaseUrl`).
-- **§20 Q3** — Which price column, and which quantity tier, feeds
-  `productAttributes.price`? Currency handling beyond USD?
-- **§20 Q4** — `product_type` → `googleProductCategory` map, or accept Google's
-  auto-assignment?
-- **§20 Q5** — Brand: constant `"Adobe Express"` or per-product/department?
-- **§20 Q6** — Identifier strategy: is `identifierExists: false` correct for
-  all Zazzle print items?
-- **§20 Q1** — Confirm auth type when GMC provisions creds (OAuth vs service
-  account — code supports both).
-- **§20 Q7/Q9** — Chunk size (default 500), Stage/Prod workspace mapping.
+Answered (wired into the code):
+
+- ~~**§20 Q2** — PDP canonical URL~~ → DA tool supplies a full `link`
+  column; service validates against `pdpAllowedHosts` (adobe.com,
+  aem.live preview).
+- ~~**§20 Q3** — Price source~~ → DA tool will fetch price from Zazzle and
+  add a `price` column to its export.
+- ~~**§20 Q5** — Brand~~ → static `"Adobe Express"` for all products.
+- ~~**§20 Q6** — Identifiers~~ → Zazzle URNs are not GTIN/MPN; the mapper
+  sends `identifierExists: false` universally.
+
+Still open (unblocks prod, no code work required yet):
+
+- **§20 Q1** — Confirm auth type when GMC provisions creds (OAuth vs
+  service account — code supports both, primary is OAuth).
+- **§20 Q4** — Populate [`config/category-map.json`](./config/category-map.json)
+  when a `product_type` → `googleProductCategory` mapping arrives. Keys
+  are raw Zazzle strings (e.g. `zazzle_hoodie`).
+- **§20 Q7** — Confirm a GMC test account exists (owner is checking).
+- **§20 Q8** — Create the GCP project and complete `developerRegistration.registerGcp`
+  against the Merchant Center account.
+- **§20 Q9** — Stage/Prod workspace mapping (assumed: Stage → GMC test
+  account, Prod → GMC prod account).
