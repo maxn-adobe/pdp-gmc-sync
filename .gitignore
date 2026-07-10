@@ -11,10 +11,18 @@ dist
 # Config
 config.json
 .env*
+!.env.example
 .aio
 
 # Adobe I/O console config
 console.json
+
+# GCP service account credentials — never commit
+*service-account*.json
+gcp-credentials*.json
+credentials.json
+key.json
+*.pem
 
 # Test output
 junit.xml
@@ -41,4 +49,4 @@ coverage
 logs
 
 #Custom
-#ai_context
+#ai_context 
