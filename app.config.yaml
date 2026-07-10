@@ -1,27 +1,65 @@
 application:
   actions: actions
-  web: web-src
   runtimeManifest:
     packages:
-      pdpgmcsync:
+      gmc-feed-sync:
         license: Apache-2.0
         actions:
-          generic:
-            function: actions/generic/index.js
+
+          sync-products:
+            function: actions/sync-products/index.js
             web: 'yes'
             runtime: nodejs:22
             inputs:
-              LOG_LEVEL: debug
+              LOG_LEVEL: $LOG_LEVEL
+              GMC_CLIENT_ID: $GMC_CLIENT_ID
+              GMC_CLIENT_SECRET: $GMC_CLIENT_SECRET
+              GMC_REFRESH_TOKEN: $GMC_REFRESH_TOKEN
+              GMC_MERCHANT_ACCOUNT_ID_TEST: $GMC_MERCHANT_ACCOUNT_ID_TEST
+              GMC_MERCHANT_ACCOUNT_ID_PROD: $GMC_MERCHANT_ACCOUNT_ID_PROD
+              GMC_DATASOURCE_ID_TEST: $GMC_DATASOURCE_ID_TEST
+              GMC_DATASOURCE_ID_PROD: $GMC_DATASOURCE_ID_PROD
             annotations:
               require-adobe-auth: true
               final: true
-          publish-events:
-            function: actions/publish-events/index.js
+            limits:
+              timeout: 60000
+              memorySize: 512
+              concurrency: 1
+
+          diagnostics:
+            function: actions/diagnostics/index.js
             web: 'yes'
             runtime: nodejs:22
             inputs:
-              LOG_LEVEL: debug
-              apiKey: $SERVICE_API_KEY
+              LOG_LEVEL: $LOG_LEVEL
+              GMC_CLIENT_ID: $GMC_CLIENT_ID
+              GMC_CLIENT_SECRET: $GMC_CLIENT_SECRET
+              GMC_REFRESH_TOKEN: $GMC_REFRESH_TOKEN
+              GMC_MERCHANT_ACCOUNT_ID_TEST: $GMC_MERCHANT_ACCOUNT_ID_TEST
+              GMC_MERCHANT_ACCOUNT_ID_PROD: $GMC_MERCHANT_ACCOUNT_ID_PROD
+              GMC_DATASOURCE_ID_TEST: $GMC_DATASOURCE_ID_TEST
+              GMC_DATASOURCE_ID_PROD: $GMC_DATASOURCE_ID_PROD
+              SLACK_WEBHOOK_URL: $SLACK_WEBHOOK_URL
+            annotations:
+              require-adobe-auth: true
+              final: true
+            limits:
+              timeout: 60000
+              memorySize: 512
+              concurrency: 1
+
+          bootstrap-datasource:
+            function: actions/bootstrap-datasource/index.js
+            web: 'no'
+            runtime: nodejs:22
+            inputs:
+              LOG_LEVEL: $LOG_LEVEL
+              GMC_CLIENT_ID: $GMC_CLIENT_ID
+              GMC_CLIENT_SECRET: $GMC_CLIENT_SECRET
+              GMC_REFRESH_TOKEN: $GMC_REFRESH_TOKEN
+              GMC_MERCHANT_ACCOUNT_ID_TEST: $GMC_MERCHANT_ACCOUNT_ID_TEST
+              GMC_MERCHANT_ACCOUNT_ID_PROD: $GMC_MERCHANT_ACCOUNT_ID_PROD
             annotations:
               require-adobe-auth: true
               final: true
