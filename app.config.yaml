@@ -12,6 +12,7 @@ application:
             runtime: nodejs:22
             inputs:
               LOG_LEVEL: $LOG_LEVEL
+              GMC_SERVICE_ACCOUNT_JSON: $GMC_SERVICE_ACCOUNT_JSON
               GMC_CLIENT_ID: $GMC_CLIENT_ID
               GMC_CLIENT_SECRET: $GMC_CLIENT_SECRET
               GMC_REFRESH_TOKEN: $GMC_REFRESH_TOKEN
@@ -33,6 +34,7 @@ application:
             runtime: nodejs:22
             inputs:
               LOG_LEVEL: $LOG_LEVEL
+              GMC_SERVICE_ACCOUNT_JSON: $GMC_SERVICE_ACCOUNT_JSON
               GMC_CLIENT_ID: $GMC_CLIENT_ID
               GMC_CLIENT_SECRET: $GMC_CLIENT_SECRET
               GMC_REFRESH_TOKEN: $GMC_REFRESH_TOKEN
@@ -55,6 +57,7 @@ application:
             runtime: nodejs:22
             inputs:
               LOG_LEVEL: $LOG_LEVEL
+              GMC_SERVICE_ACCOUNT_JSON: $GMC_SERVICE_ACCOUNT_JSON
               GMC_CLIENT_ID: $GMC_CLIENT_ID
               GMC_CLIENT_SECRET: $GMC_CLIENT_SECRET
               GMC_REFRESH_TOKEN: $GMC_REFRESH_TOKEN
