@@ -1,0 +1,18 @@
+[
+  {
+    "product_id": "urn:aaid:sc:us:express-test-0001",
+    "title": "TEST — Adobe Express Custom Ceramic Mug",
+    "link": "https://www.adobe.com/express/templates/print/mugs/test-product-0001",
+    "image_link": "https://www.adobe.com/content/dam/cc/express/test/mug-0001.jpg",
+    "price": "14.99",
+    "description": "Test product for GMC sync validation. Not a real listing."
+  },
+  {
+    "product_id": "urn:aaid:sc:us:express-test-0002",
+    "title": "TEST — Adobe Express Hardcover Photo Book",
+    "link": "https://www.adobe.com/express/templates/print/photo-books/test-product-0002",
+    "image_link": "https://www.adobe.com/content/dam/cc/express/test/photobook-0002.jpg",
+    "price": "29.99",
+    "description": "Second test product for batch validation."
+  }
+]
