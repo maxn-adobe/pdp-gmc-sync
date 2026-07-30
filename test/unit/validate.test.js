@@ -3,6 +3,7 @@ const { validateRow, validateRows, validateLink, MAX_CHUNK } = require('../../ac
 const good = {
   product_id: 'urn:aaid:sc:VA6C2:abc',
   title: 'A thing',
+  description: 'A perfectly nice thing.',
   link: 'https://www.adobe.com/express/print/mug/a-thing',
   initial_pretty_preferred_view_url: 'https://cdn.example.com/x.png',
   price: '9.99'
@@ -30,6 +31,17 @@ describe('validateRow', () => {
   })
   test('rejects non-string description', () => {
     expect(validateRow({ ...good, description: 42 })).toMatch(/description/)
+  })
+  test('rejects missing description', () => {
+    const { description, ...rest } = good
+    expect(validateRow(rest)).toMatch(/description/)
+  })
+  test('rejects empty description', () => {
+    expect(validateRow({ ...good, description: '' })).toMatch(/description/)
+    expect(validateRow({ ...good, description: '   ' })).toMatch(/description/)
+  })
+  test('rejects description over the max length', () => {
+    expect(validateRow({ ...good, description: 'x'.repeat(5001) })).toMatch(/description/)
   })
   test('rejects non-object rows', () => {
     expect(validateRow(null)).toMatch(/object/)
@@ -80,8 +92,7 @@ describe('validateRows', () => {
 })
 
 describe('MAX_CHUNK', () => {
-  test('is exposed and reasonable', () => {
-    expect(MAX_CHUNK).toBeGreaterThanOrEqual(250)
-    expect(MAX_CHUNK).toBeLessThanOrEqual(500)
+  test('is lowered to 50 to respect the Adobe I/O Runtime 1MB payload limit', () => {
+    expect(MAX_CHUNK).toBe(50)
   })
 })

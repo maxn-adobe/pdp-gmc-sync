@@ -1,9 +1,14 @@
 const defaults = require('../../config/defaults.json')
+const { sanitizeOfferId } = require('./mapProduct')
 
-const MAX_CHUNK = 500
+const MAX_CHUNK = 50
 const MAX_TITLE = 150
 const MAX_DESCRIPTION = 5000
 const MAX_URL = 2000
+const MAX_PRODUCT_ID = 200
+// Google's real hard limit on the `id`/offerId attribute, confirmed via a live
+// insert rejection ("Value too long in attribute: id")
+const MAX_OFFER_ID = 50
 
 const ALLOWED_HOSTS = new Set(defaults.pdpAllowedHosts || [])
 
@@ -35,7 +40,11 @@ function validateLink (link) {
 
 function validateRow (row) {
   if (!row || typeof row !== 'object') return 'row is not an object'
-  if (!isNonEmptyString(row.product_id, 100)) return 'product_id missing or invalid'
+  if (!isNonEmptyString(row.product_id, MAX_PRODUCT_ID)) return 'product_id missing or invalid'
+  const offerId = sanitizeOfferId(row.product_id)
+  if (offerId.length > MAX_OFFER_ID) {
+    return `product_id too long once sanitized to offerId (${offerId.length} > ${MAX_OFFER_ID} chars): ${offerId}`
+  }
   if (!isNonEmptyString(row.title, MAX_TITLE * 4)) return 'title missing or invalid'
   const linkErr = validateLink(row.link)
   if (linkErr) return linkErr
@@ -44,12 +53,7 @@ function validateRow (row) {
   if (image && !/^https?:\/\//i.test(image)) return 'image link must be an http(s) URL'
   const price = row.price ?? row.base_price
   if (!isValidPrice(price)) return 'price missing or invalid'
-  if (row.description !== undefined && row.description !== null && typeof row.description !== 'string') {
-    return 'description must be a string when present'
-  }
-  if (typeof row.description === 'string' && row.description.length > MAX_DESCRIPTION) {
-    return 'description too long'
-  }
+  if (!isNonEmptyString(row.description, MAX_DESCRIPTION)) return 'description missing or invalid'
   return null
 }
 
