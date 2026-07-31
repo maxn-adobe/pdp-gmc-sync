@@ -114,9 +114,9 @@ Adobe's pattern: real secret **values** go in `.env` (gitignored); the manifest 
 1. Add your GMC placeholders to `.env` (alongside the auto-added `AIO_runtime_*` lines):
 
 ```
-GMC_CLIENT_ID=__PLACEHOLDER__
-GMC_CLIENT_SECRET=__PLACEHOLDER__
-GMC_REFRESH_TOKEN=__PLACEHOLDER__
+GMC_SERVICE_ACCOUNT_JSON=__COMPLETE_ONE_LINE_JSON_KEY__
+GMC_SERVICE_ACCOUNT_EMAIL=express-tools-gcp-account@adbe-gcp1060.iam.gserviceaccount.com
+GMC_GCP_PROJECT_ID=adbe-gcp1060
 GMC_MERCHANT_ACCOUNT_ID_TEST=__PLACEHOLDER__
 GMC_MERCHANT_ACCOUNT_ID_PROD=__PLACEHOLDER__
 GMC_DATASOURCE_ID_TEST=
@@ -134,8 +134,9 @@ actions:
     web: 'yes'
     runtime: nodejs:22
     inputs:
-      GMC_CLIENT_ID: $GMC_CLIENT_ID
-      GMC_CLIENT_SECRET: $GMC_CLIENT_SECRET
+      GMC_SERVICE_ACCOUNT_JSON: $GMC_SERVICE_ACCOUNT_JSON
+      GMC_SERVICE_ACCOUNT_EMAIL: $GMC_SERVICE_ACCOUNT_EMAIL
+      GMC_GCP_PROJECT_ID: $GMC_GCP_PROJECT_ID
       # ...rest per handoff §8
     annotations:
       require-adobe-auth: true

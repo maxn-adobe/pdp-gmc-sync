@@ -1,9 +1,6 @@
 const { stringParameters } = require('../utils')
 
 const SECRET_KEYS = new Set([
-  'gmc_client_id',
-  'gmc_client_secret',
-  'gmc_refresh_token',
   'gmc_service_account_json',
   'slack_webhook_url',
   'authorization',
