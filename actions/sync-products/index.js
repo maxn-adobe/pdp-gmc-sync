@@ -5,6 +5,7 @@ const { mapProduct, sanitizeOfferId } = require("../lib/mapProduct");
 const { validateRows, MAX_CHUNK } = require("../lib/validate");
 const { insertWithRetry } = require("../lib/insertWithRetry");
 const { runPool } = require("../lib/concurrency");
+const { initState, recordPushes } = require("../lib/syncState");
 const { redact } = require("../lib/redact");
 const { errorResponse, checkMissingRequestInputs } = require("../utils");
 
@@ -37,6 +38,8 @@ async function main(params) {
     if (validParamsValue !== true) {
         return validParamsValue;
     }
+
+    const statePromise = initState(logger);
 
     let accountId, dataSource, productInputs;
 
@@ -100,6 +103,9 @@ async function main(params) {
         productId: r.offerId,
         reason: r.status ? `${r.status}: ${r.message}` : r.message || "unknown error"
     }));
+
+    const state = await statePromise;
+    await recordPushes(state, params.env, accountId, pushedIds, logger);
 
     const body = {
         env: params.env,
