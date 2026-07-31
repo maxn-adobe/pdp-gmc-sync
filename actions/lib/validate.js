@@ -1,5 +1,5 @@
 const defaults = require('../../config/defaults.json')
-const { sanitizeOfferId } = require('./mapProduct')
+const { sanitizeOfferId, resolveGoogleProductCategory } = require('./mapProduct')
 
 const MAX_CHUNK = 50
 const MAX_TITLE = 150
@@ -54,6 +54,11 @@ function validateRow (row) {
   const price = row.price ?? row.base_price
   if (!isValidPrice(price)) return 'price missing or invalid'
   if (!isNonEmptyString(row.description, MAX_DESCRIPTION)) return 'description missing or invalid'
+  if (!resolveGoogleProductCategory(row)) {
+    return row.product_type
+      ? `google_product_category could not be resolved for product_type "${row.product_type}" — add it to config/category-map.json, or supply google_product_category directly on the row`
+      : 'google_product_category missing — supply product_type (mapped in config/category-map.json) or google_product_category directly on the row'
+  }
   return null
 }
 

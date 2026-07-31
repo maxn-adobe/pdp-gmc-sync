@@ -9,6 +9,17 @@ function toMicros (priceValue, currencyCode = 'USD') {
   return { amountMicros: String(Math.round(raw * 1000000)), currencyCode }
 }
 
+// Shared by validate.js (to enforce google_product_category as mandatory)
+// and mapProduct() below (to actually set the field) — single source of
+// truth for how the value is resolved, so the two never drift apart.
+// An explicit row-level value always wins over the category-map lookup.
+function resolveGoogleProductCategory (row) {
+  if (row.google_product_category != null && String(row.google_product_category).trim()) {
+    return String(row.google_product_category).trim()
+  }
+  return categoryMap[row.product_type] || null
+}
+
 function sanitizeOfferId (id) {
   const trimmed = String(id ?? '').trim()
   // Adobe/Zazzle template ids are URNs like "urn:aaid:sc:VA6C2:<uuid>". The
@@ -40,7 +51,7 @@ function mapProduct (row) {
     price: toMicros(row.price ?? row.base_price, defaults.currency || 'USD')
   }
 
-  const gpc = categoryMap[row.product_type]
+  const gpc = resolveGoogleProductCategory(row)
   if (gpc) attrs.googleProductCategory = gpc
 
   // Human-readable category label. The v1 ProductAttributes field is the
@@ -127,4 +138,4 @@ function mapProduct (row) {
   }
 }
 
-module.exports = { mapProduct, toMicros, sanitizeOfferId }
+module.exports = { mapProduct, toMicros, sanitizeOfferId, resolveGoogleProductCategory }

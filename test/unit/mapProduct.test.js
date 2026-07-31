@@ -130,6 +130,22 @@ describe('mapProduct', () => {
     expect(out.productAttributes.googleProductCategory).toBeUndefined()
   })
 
+  test('mapped product_type sets googleProductCategory from config/category-map.json', () => {
+    const out = mapProduct({ ...goodRow, product_type: 'zazzle_mug' })
+    expect(out.productAttributes.googleProductCategory).toBe('2162')
+  })
+
+  test('an explicit google_product_category overrides the category-map lookup', () => {
+    const out = mapProduct({ ...goodRow, product_type: 'zazzle_mug', google_product_category: '9999' })
+    expect(out.productAttributes.googleProductCategory).toBe('9999')
+  })
+
+  test('an explicit google_product_category works with no product_type at all', () => {
+    const { product_type: _, ...noType } = goodRow
+    const out = mapProduct({ ...noType, google_product_category: 555 })
+    expect(out.productAttributes.googleProductCategory).toBe('555')
+  })
+
   test('empty product_id throws', () => {
     expect(() => mapProduct({ ...goodRow, product_id: '' })).toThrow(/product_id/)
   })

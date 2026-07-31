@@ -33,7 +33,8 @@ const goodRow = {
   description: 'A perfectly nice thing.',
   link: 'https://www.adobe.com/express/print/mug/a-thing',
   initial_pretty_preferred_view_url: 'https://cdn.example.com/x.png',
-  price: '9.99'
+  price: '9.99',
+  google_product_category: '123'
 }
 
 describe('sync-products action', () => {
