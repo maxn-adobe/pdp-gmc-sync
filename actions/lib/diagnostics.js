@@ -1,5 +1,6 @@
 const { parseGoogleError } = require('./googleError')
 const { runPool } = require('./concurrency')
+const { isStale } = require('./syncState')
 
 const FEED_LABEL = 'US'
 const CONTENT_LANGUAGE = 'en'
@@ -25,25 +26,32 @@ function collectIssues (product) {
   }))
 }
 
-async function fetchProductStatus (productsClient, accountId, offerId) {
+async function fetchProductStatus (productsClient, accountId, offerId, state, env) {
   const name = `accounts/${accountId}/products/${CONTENT_LANGUAGE}~${FEED_LABEL}~${offerId}`
   try {
     const [product] = await productsClient.getProduct({ name })
-    return {
+    const result = {
       offerId,
       ok: true,
       status: classify(product),
       issues: collectIssues(product),
       name: product.name
     }
+    // Never replaces `status` — just flags that this particular value may be
+    // a stale leftover from before the caller's last push, not Google's
+    // verdict on the current data (see actions/lib/syncState.js).
+    if (await isStale(state, env, accountId, offerId, product)) {
+      result.stale = true
+    }
+    return result
   } catch (err) {
     const p = parseGoogleError(err)
     return { offerId, ok: false, status: 'error', code: p.code, statusCode: p.status, reason: p.reason, message: p.message }
   }
 }
 
-async function fetchAllStatuses (productsClient, accountId, offerIds, concurrency = 15) {
-  return runPool(offerIds, (id) => fetchProductStatus(productsClient, accountId, id), concurrency)
+async function fetchAllStatuses (productsClient, accountId, offerIds, state, env, concurrency = 15) {
+  return runPool(offerIds, (id) => fetchProductStatus(productsClient, accountId, id, state, env), concurrency)
 }
 
 async function searchDisapproved (reportsClient, accountId, pageSize = 1000) {

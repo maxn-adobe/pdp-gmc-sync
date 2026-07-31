@@ -4,6 +4,7 @@ const { GoogleAuth } = require('google-auth-library')
 const validServiceAccount = {
   type: 'service_account',
   project_id: 'adbe-gcp1060',
+  private_key_id: 'fake-key-id',
   private_key: '-----BEGIN PRIVATE KEY-----\nFAKE\n-----END PRIVATE KEY-----\n',
   client_email: 'express-tools-gcp-account@adbe-gcp1060.iam.gserviceaccount.com'
 }

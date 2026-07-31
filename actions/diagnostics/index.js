@@ -2,6 +2,7 @@ const { Core } = require('@adobe/aio-sdk')
 const { makeClients } = require('../lib/gmcClients')
 const { resolveAccount, ENVS } = require('../lib/config')
 const { fetchAllStatuses, searchDisapproved, summarize } = require('../lib/diagnostics')
+const { initState } = require('../lib/syncState')
 const { postSlack, formatDigest } = require('../lib/slack')
 const { redact } = require('../lib/redact')
 const { errorResponse, checkMissingRequestInputs } = require('../utils')
@@ -33,9 +34,11 @@ async function main (params) {
 
   const report = { env: params.env, accountId, offerCount: 0, counts: { active: 0, pending: 0, disapproved: 0, unknown: 0, error: 0 }, itemIssueTop: [], results: [] }
 
+  const state = await initState(logger)
+
   try {
     if (offerIds && offerIds.length) {
-      const results = await fetchAllStatuses(clients.products, accountId, offerIds)
+      const results = await fetchAllStatuses(clients.products, accountId, offerIds, state, params.env)
       const { counts, itemIssueTop } = summarize(results)
       report.offerCount = results.length
       report.counts = counts
