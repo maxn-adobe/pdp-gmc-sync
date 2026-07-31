@@ -60,7 +60,7 @@ On-demand, user-triggered. Two primary web actions plus a one-off bootstrap acti
 │    create primary API data source in test & prod           │
 │    → prints data source IDs to store in config             │
 └───────────────────────────────┬──────────────────────────┘
-                                 │  HTTPS (service-account or OAuth creds)
+                                 │  HTTPS (service-account credentials)
                                  ▼
                  ┌───────────────────────────────┐
                  │ Google Merchant API v1 (stable) │
@@ -85,7 +85,7 @@ The ticket was written with legacy Content API assumptions. Do **not** implement
 |---|---|---|
 | "Batch requests support up to 100 products per call" | **There is no batch/customBatch endpoint in v1.** | Submit products via **individual `productInputs.insert` calls run concurrently** (bounded worker pool). "Batch of N with per-item logging" = the pool collects per-item results; one failure never aborts the run. |
 | "Local dev runs against sandbox" / "run full sync against sandbox" | **No legacy sandbox sub-account.** | Use **Test Accounts** (`accounts.createTestAccount`). Data submitted there never publishes to Search/Shopping. |
-| "OAuth 2.0 credentials" | For an automated server-to-server feed, Google recommends a **service account**. OAuth user-consent is only needed to act on accounts you don't own. | Per project decision we use **OAuth Client ID + Secret + Refresh Token** (see §9). Abstract auth so a service account can be swapped in. **Confirm with the GMC admin which one is being provisioned.** |
+| "OAuth 2.0 credentials" | For an automated server-to-server feed, Google recommends a **service account**. OAuth user-consent is only needed to act on accounts you don't own. | Use the provisioned service account in project `adbe-gcp1060` (see §9). |
 | (implied) price is a decimal string | **Price is `{ amountMicros, currencyCode }`; 1,000,000 micros = 1 unit.** | `$25.00` → `{ amountMicros: "25000000", currencyCode: "USD" }`. Convert with rounding (§11). |
 | (implied) insert of an existing product errors | **Insert is an upsert** — inserting an existing `contentLanguage~feedLabel~offerId` replaces it. | Idempotent by design. Do not add "does it exist" pre-checks. |
 | (implied) status strings are `approved`/`pending`/`disapproved` | Status enums are **UPPER_SNAKE_CASE** (e.g. `NOT_ELIGIBLE_OR_DISAPPROVED`). | Read enums from the client library, not hardcoded lowercase strings. |
@@ -105,11 +105,11 @@ The ticket was written with legacy Content API assumptions. Do **not** implement
   - `@google-shopping/reports` — `ReportServiceClient.search` (marked preview; pin the version).
   - `@google-shopping/accounts` — test account + developer registration ops.
   - (optional) `@google-shopping/quota` — quota checks.
-- `google-auth-library` — builds the OAuth2 / service-account credential passed to the clients.
+- `google-auth-library` — builds the service-account credential passed to the clients.
 - `@adobe/aio-sdk` — `Core.Logger` for structured logging (already present in an App Builder scaffold).
 - Dev: `jest` (or the scaffold's default test runner), `dotenv` is **not** needed at runtime (see §7 gotcha).
 
-> Verify the exact client-option key for passing credentials (`auth` vs `authClient`) against the installed `@google-shopping/*` version — GAPIC clients generally accept `{ auth: <GoogleAuth|OAuth2Client> }`. Confirm before wiring.
+> The installed GAPIC clients accept the service-account `GoogleAuth` instance through `{ auth }`.
 
 ---
 
@@ -135,7 +135,7 @@ gmc-feed-sync/
     bootstrap-datasource/index.js  # one-off: create primary data source, print IDs
     utils.js                 # scaffold-provided: errorResponse, checkMissingRequestInputs, getBearerToken, stringParameters
     lib/
-      auth.js                # getAuthClient(params) — OAuth primary, service-account alt
+      auth.js                # validate service-account JSON and construct GoogleAuth
       gmcClients.js          # constructs @google-shopping clients from auth
       config.js              # resolve env→account/dataSource; load defaults + category map
       mapProduct.js          # export row → productInput; price→micros; defaults; validation
@@ -160,15 +160,13 @@ gmc-feed-sync/
 Put these in `.env` (gitignored) and mirror the keys (values blank) in `.env.example`:
 
 ```
-# ---- Google Merchant Center credentials (OAuth path — per project decision) ----
-GMC_CLIENT_ID=__PLACEHOLDER__
-GMC_CLIENT_SECRET=__PLACEHOLDER__
-GMC_REFRESH_TOKEN=__PLACEHOLDER__          # minted once with scope https://www.googleapis.com/auth/content
-# ---- Alternative auth (uncomment if GMC provisions a service account instead) ----
-# GMC_SERVICE_ACCOUNT_JSON=__PLACEHOLDER_JSON_STRING__
+# ---- Google Merchant Center service-account credentials ----
+GMC_SERVICE_ACCOUNT_JSON=__COMPLETE_ONE_LINE_JSON_KEY__
+GMC_SERVICE_ACCOUNT_EMAIL=express-tools-gcp-account@adbe-gcp1060.iam.gserviceaccount.com
+GMC_GCP_PROJECT_ID=adbe-gcp1060
 
 # ---- GMC account + data source IDs (test vs prod) ----
-GMC_MERCHANT_ACCOUNT_ID_TEST=__PLACEHOLDER__
+GMC_MERCHANT_ACCOUNT_ID_TEST=582778
 GMC_MERCHANT_ACCOUNT_ID_PROD=__PLACEHOLDER__
 GMC_DATASOURCE_ID_TEST=__PLACEHOLDER__     # filled after running bootstrap-datasource
 GMC_DATASOURCE_ID_PROD=__PLACEHOLDER__
@@ -189,11 +187,11 @@ Adobe I/O Runtime does **not** guarantee `.env`/`process.env` values are present
 ```js
 // CORRECT — inside actions/*/index.js
 async function main (params) {
-  const clientId = params.GMC_CLIENT_ID   // came from manifest inputs → .env
+  const serviceAccountJson = params.GMC_SERVICE_ACCOUNT_JSON // manifest input → .env
 }
 
 // WRONG — will be undefined when deployed
-const clientId = process.env.GMC_CLIENT_ID
+const serviceAccountJson = process.env.GMC_SERVICE_ACCOUNT_JSON
 ```
 
 Default parameters are **encrypted** by Adobe. Mark the actions `final: true` (§8) so a caller cannot override the injected secrets via invocation params. See §8 for how `$VAR` in the manifest pulls from `.env`, and how CI sets these for production (GitHub Actions secrets).
@@ -202,7 +200,7 @@ Default parameters are **encrypted** by Adobe. Mark the actions `final: true` (�
 
 ## 8. `app.config.yaml` (the Adobe I/O configuration)
 
-Full manifest. `$GMC_CLIENT_ID` etc. resolve from `.env` at deploy time and are injected as encrypted default params.
+Full manifest. `$GMC_SERVICE_ACCOUNT_JSON` etc. resolve from `.env` at deploy time and are injected as encrypted default params.
 
 ```yaml
 application:
@@ -218,9 +216,9 @@ application:
             runtime: nodejs:22
             inputs:
               LOG_LEVEL: $LOG_LEVEL
-              GMC_CLIENT_ID: $GMC_CLIENT_ID
-              GMC_CLIENT_SECRET: $GMC_CLIENT_SECRET
-              GMC_REFRESH_TOKEN: $GMC_REFRESH_TOKEN
+              GMC_SERVICE_ACCOUNT_JSON: $GMC_SERVICE_ACCOUNT_JSON
+              GMC_SERVICE_ACCOUNT_EMAIL: $GMC_SERVICE_ACCOUNT_EMAIL
+              GMC_GCP_PROJECT_ID: $GMC_GCP_PROJECT_ID
               GMC_MERCHANT_ACCOUNT_ID_TEST: $GMC_MERCHANT_ACCOUNT_ID_TEST
               GMC_MERCHANT_ACCOUNT_ID_PROD: $GMC_MERCHANT_ACCOUNT_ID_PROD
               GMC_DATASOURCE_ID_TEST: $GMC_DATASOURCE_ID_TEST
@@ -239,9 +237,9 @@ application:
             runtime: nodejs:22
             inputs:
               LOG_LEVEL: $LOG_LEVEL
-              GMC_CLIENT_ID: $GMC_CLIENT_ID
-              GMC_CLIENT_SECRET: $GMC_CLIENT_SECRET
-              GMC_REFRESH_TOKEN: $GMC_REFRESH_TOKEN
+              GMC_SERVICE_ACCOUNT_JSON: $GMC_SERVICE_ACCOUNT_JSON
+              GMC_SERVICE_ACCOUNT_EMAIL: $GMC_SERVICE_ACCOUNT_EMAIL
+              GMC_GCP_PROJECT_ID: $GMC_GCP_PROJECT_ID
               GMC_MERCHANT_ACCOUNT_ID_TEST: $GMC_MERCHANT_ACCOUNT_ID_TEST
               GMC_MERCHANT_ACCOUNT_ID_PROD: $GMC_MERCHANT_ACCOUNT_ID_PROD
               GMC_DATASOURCE_ID_TEST: $GMC_DATASOURCE_ID_TEST
@@ -261,9 +259,9 @@ application:
             runtime: nodejs:22
             inputs:
               LOG_LEVEL: $LOG_LEVEL
-              GMC_CLIENT_ID: $GMC_CLIENT_ID
-              GMC_CLIENT_SECRET: $GMC_CLIENT_SECRET
-              GMC_REFRESH_TOKEN: $GMC_REFRESH_TOKEN
+              GMC_SERVICE_ACCOUNT_JSON: $GMC_SERVICE_ACCOUNT_JSON
+              GMC_SERVICE_ACCOUNT_EMAIL: $GMC_SERVICE_ACCOUNT_EMAIL
+              GMC_GCP_PROJECT_ID: $GMC_GCP_PROJECT_ID
               GMC_MERCHANT_ACCOUNT_ID_TEST: $GMC_MERCHANT_ACCOUNT_ID_TEST
               GMC_MERCHANT_ACCOUNT_ID_PROD: $GMC_MERCHANT_ACCOUNT_ID_PROD
             annotations:
@@ -280,10 +278,10 @@ Notes:
 
 ## 9. Auth module (`actions/lib/auth.js`)
 
-Primary = OAuth Client ID + Secret + Refresh Token (per project decision). The refresh token must have been minted with scope `https://www.googleapis.com/auth/content`. Service-account path included, commented, for easy swap.
+The service uses only the provisioned service account. `GMC_SERVICE_ACCOUNT_JSON` must be the complete JSON key, including `private_key`; the email and project ID alone cannot sign an access-token request.
 
 ```js
-const { OAuth2Client, GoogleAuth } = require('google-auth-library')
+const { GoogleAuth } = require('google-auth-library')
 
 const CONTENT_SCOPE = 'https://www.googleapis.com/auth/content'
 
@@ -292,24 +290,11 @@ const CONTENT_SCOPE = 'https://www.googleapis.com/auth/content'
  * Reads credentials from action params (NOT process.env — see handoff §7).
  */
 function getAuthClient (params) {
-  // ---- Primary: OAuth 2.0 (client id + secret + refresh token) ----
-  if (params.GMC_CLIENT_ID && params.GMC_CLIENT_SECRET && params.GMC_REFRESH_TOKEN) {
-    const client = new OAuth2Client({
-      clientId: params.GMC_CLIENT_ID,
-      clientSecret: params.GMC_CLIENT_SECRET
-    })
-    client.setCredentials({ refresh_token: params.GMC_REFRESH_TOKEN })
-    // Library auto-refreshes the 1-hour access token on demand.
-    return client
+  if (!params.GMC_SERVICE_ACCOUNT_JSON) {
+    throw new Error('GMC credentials not configured: need GMC_SERVICE_ACCOUNT_JSON')
   }
-
-  // ---- Alternative: service account JSON ----
-  // if (params.GMC_SERVICE_ACCOUNT_JSON) {
-  //   const credentials = JSON.parse(params.GMC_SERVICE_ACCOUNT_JSON)
-  //   return new GoogleAuth({ credentials, scopes: [CONTENT_SCOPE] })
-  // }
-
-  throw new Error('GMC credentials not configured (need OAuth client+secret+refresh token, or a service account JSON).')
+  const credentials = JSON.parse(params.GMC_SERVICE_ACCOUNT_JSON)
+  return new GoogleAuth({ credentials, scopes: [CONTENT_SCOPE] })
 }
 
 module.exports = { getAuthClient, CONTENT_SCOPE }
@@ -648,15 +633,15 @@ These are enforced by Adobe's security tooling; the Claude Code agent must satis
 - **Read secrets from `params`, never `process.env`** (also correctness — §7).
 - **TLS only (Rule B/step 4).** All outbound calls are HTTPS (Google clients + Slack). Never disable certificate verification (`rejectUnauthorized: false` is banned).
 - **Validate all external input.** Incoming rows come from a browser and are untrusted. In `validate.js`, allowlist required fields (`product_id`, `title`, `description`, image, `price`), enforce types/lengths, reject rather than coerce garbage. Cap `products.length` (≤500). Validate `env` against `{'test','prod'}`.
-- **No sensitive data in logs.** Use `redact.js` (extend the scaffold's `stringParameters`, which already hides the `Authorization` header) to also strip `GMC_CLIENT_SECRET`, `GMC_REFRESH_TOKEN`, `GMC_SERVICE_ACCOUNT_JSON`, and any access token. Do not log full product payloads if they could carry PII. Log offerId + error codes, not raw bodies.
+- **No sensitive data in logs.** Use `redact.js` (extend the scaffold's `stringParameters`, which already hides the `Authorization` header) to also strip `GMC_SERVICE_ACCOUNT_JSON` and any access token. Do not log full product payloads if they could carry PII. Log offerId + error codes, not raw bodies.
 - **Fail securely / fail closed.** On auth/config errors, return a generic error and stop — never proceed unauthenticated. Generic messages to the caller; detailed (non-secret) context to the server log.
-- **Least privilege.** OAuth refresh token / service account scoped to `content` only. QA uses a credential scoped to the **test account** only (§16) — never hand production credentials to QA.
+- **Least privilege.** Scope the service account to `content` only. QA uses a credential scoped to the **test account** only (§16) — never hand production credentials to QA.
 - **Protect the deployed action.** `require-adobe-auth: true` (caller needs a valid IMS token) and `final: true` (secrets can't be overridden by invocation params). Consider `disable-download: true` on production actions once stable (irreversible).
 - **Escalate** to the security team before go-live if the export ever carries regulated/PII data.
 
 `actions/lib/redact.js` sketch:
 ```js
-const SECRET_KEYS = ['GMC_CLIENT_SECRET', 'GMC_REFRESH_TOKEN', 'GMC_SERVICE_ACCOUNT_JSON', 'authorization']
+const SECRET_KEYS = ['GMC_SERVICE_ACCOUNT_JSON', 'authorization']
 function redact (params) {
   const clone = { ...params }
   for (const k of Object.keys(clone)) {
@@ -674,7 +659,7 @@ module.exports = { redact }
 
 ## 16. Test mode / QA flow
 
-- **Create a GMC test account once** (admin): `accounts.createTestAccount` (via `@google-shopping/accounts`, or a small script). Add the service account / OAuth identity to it. Store its ID as `GMC_MERCHANT_ACCOUNT_ID_TEST`. Run `bootstrap-datasource --param env test` to create its data source.
+- **Create a GMC test account once** (admin): `accounts.createTestAccount` (via `@google-shopping/accounts`, or a small script). Add the service account to it. Store its ID as `GMC_MERCHANT_ACCOUNT_ID_TEST`. Run `bootstrap-datasource --param env test` to create its data source.
 - **Constraints:** max 5 test accounts per Google account; test accounts behave like production for uploads but **never publish**; cannot get quota increases; may eventually be suspended for invalid products (expected, harmless for API testing).
 - **QA runs a full sync with no production creds:** give QA a credential (or a `.env`) that only targets the test account. `sync-products --param env test` then `diagnostics --param env test`. This satisfies AC #5.
 - **"Check first" is the same code path** with `env: 'test'`.
@@ -721,7 +706,7 @@ module.exports = { redact }
 
 ## 20. Open questions / assumptions to confirm (do not block scaffolding on these)
 
-1. **Auth credential type:** OAuth (client id + secret + refresh token) vs service account? Design supports both; confirm which GMC provisions. Placeholders assume OAuth.
+1. **Auth credential type (resolved):** service account `express-tools-gcp-account@adbe-gcp1060.iam.gserviceaccount.com` in GCP project `adbe-gcp1060`. Supply its complete JSON key through the deployment secret store.
 2. **PDP canonical URL pattern:** what is the public URL for a Print PDP given a `url_slug`? Needed for `link` and `defaults.pdpBaseUrl`.
 3. **Price source & quantity tier:** print products have quantity-tiered pricing. Which price goes to GMC — a `price` column in the export, or the Zazzle base/min-quantity price? Which currency handling beyond USD (v1 is USD only)?
 4. **`product_type` → `googleProductCategory` map:** provide the mapping table, or accept Google's auto-assignment for v1?
