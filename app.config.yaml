@@ -13,9 +13,8 @@ application:
             inputs:
               LOG_LEVEL: $LOG_LEVEL
               GMC_SERVICE_ACCOUNT_JSON: $GMC_SERVICE_ACCOUNT_JSON
-              GMC_CLIENT_ID: $GMC_CLIENT_ID
-              GMC_CLIENT_SECRET: $GMC_CLIENT_SECRET
-              GMC_REFRESH_TOKEN: $GMC_REFRESH_TOKEN
+              GMC_SERVICE_ACCOUNT_EMAIL: $GMC_SERVICE_ACCOUNT_EMAIL
+              GMC_GCP_PROJECT_ID: $GMC_GCP_PROJECT_ID
               GMC_MERCHANT_ACCOUNT_ID_TEST: $GMC_MERCHANT_ACCOUNT_ID_TEST
               GMC_MERCHANT_ACCOUNT_ID_PROD: $GMC_MERCHANT_ACCOUNT_ID_PROD
               GMC_DATASOURCE_ID_TEST: $GMC_DATASOURCE_ID_TEST
@@ -35,9 +34,8 @@ application:
             inputs:
               LOG_LEVEL: $LOG_LEVEL
               GMC_SERVICE_ACCOUNT_JSON: $GMC_SERVICE_ACCOUNT_JSON
-              GMC_CLIENT_ID: $GMC_CLIENT_ID
-              GMC_CLIENT_SECRET: $GMC_CLIENT_SECRET
-              GMC_REFRESH_TOKEN: $GMC_REFRESH_TOKEN
+              GMC_SERVICE_ACCOUNT_EMAIL: $GMC_SERVICE_ACCOUNT_EMAIL
+              GMC_GCP_PROJECT_ID: $GMC_GCP_PROJECT_ID
               GMC_MERCHANT_ACCOUNT_ID_TEST: $GMC_MERCHANT_ACCOUNT_ID_TEST
               GMC_MERCHANT_ACCOUNT_ID_PROD: $GMC_MERCHANT_ACCOUNT_ID_PROD
               GMC_DATASOURCE_ID_TEST: $GMC_DATASOURCE_ID_TEST
@@ -58,11 +56,14 @@ application:
             inputs:
               LOG_LEVEL: $LOG_LEVEL
               GMC_SERVICE_ACCOUNT_JSON: $GMC_SERVICE_ACCOUNT_JSON
-              GMC_CLIENT_ID: $GMC_CLIENT_ID
-              GMC_CLIENT_SECRET: $GMC_CLIENT_SECRET
-              GMC_REFRESH_TOKEN: $GMC_REFRESH_TOKEN
+              GMC_SERVICE_ACCOUNT_EMAIL: $GMC_SERVICE_ACCOUNT_EMAIL
+              GMC_GCP_PROJECT_ID: $GMC_GCP_PROJECT_ID
               GMC_MERCHANT_ACCOUNT_ID_TEST: $GMC_MERCHANT_ACCOUNT_ID_TEST
               GMC_MERCHANT_ACCOUNT_ID_PROD: $GMC_MERCHANT_ACCOUNT_ID_PROD
             annotations:
               require-adobe-auth: true
               final: true
+            limits:
+              timeout: 60000
+              memorySize: 512
+              concurrency: 1

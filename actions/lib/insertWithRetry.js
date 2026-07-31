@@ -17,13 +17,13 @@ async function insertWithRetry (client, req, offerId, logger) {
       } catch (err2) {
         const p2 = parseGoogleError(err2)
         if (logger?.error) {
-          logger.error(`insert failed offerId=${offerId} code=${p2.code} status=${p2.status} reason=${p2.reason}`)
+          logger.error(`insert failed offerId=${offerId} code=${p2.code} status=${p2.status} reason=${p2.reason} message=${p2.message}`)
         }
         return { offerId, ok: false, code: p2.code, status: p2.status, reason: p2.reason, message: p2.message, retried: true }
       }
     }
     if (logger?.error) {
-      logger.error(`insert failed offerId=${offerId} code=${p.code} status=${p.status} reason=${p.reason}`)
+      logger.error(`insert failed offerId=${offerId} code=${p.code} status=${p.status} reason=${p.reason} message=${p.message}`)
     }
     return { offerId, ok: false, code: p.code, status: p.status, reason: p.reason, message: p.message }
   }

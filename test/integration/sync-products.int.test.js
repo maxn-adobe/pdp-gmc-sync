@@ -3,10 +3,8 @@ const describeIf = RUN ? describe : describe.skip
 
 const paramsFromEnv = () => ({
   LOG_LEVEL: process.env.LOG_LEVEL || 'info',
-  GMC_CLIENT_ID: process.env.GMC_CLIENT_ID,
-  GMC_CLIENT_SECRET: process.env.GMC_CLIENT_SECRET,
-  GMC_REFRESH_TOKEN: process.env.GMC_REFRESH_TOKEN,
   GMC_SERVICE_ACCOUNT_JSON: process.env.GMC_SERVICE_ACCOUNT_JSON,
+  GMC_GCP_PROJECT_ID: process.env.GMC_GCP_PROJECT_ID,
   GMC_MERCHANT_ACCOUNT_ID_TEST: process.env.GMC_MERCHANT_ACCOUNT_ID_TEST,
   GMC_DATASOURCE_ID_TEST: process.env.GMC_DATASOURCE_ID_TEST,
   __ow_headers: { authorization: 'Bearer test' }

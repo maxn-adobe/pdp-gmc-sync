@@ -3,9 +3,11 @@ const { validateRow, validateRows, validateLink, MAX_CHUNK } = require('../../ac
 const good = {
   product_id: 'urn:aaid:sc:VA6C2:abc',
   title: 'A thing',
+  description: 'A perfectly nice thing.',
   link: 'https://www.adobe.com/express/print/mug/a-thing',
   initial_pretty_preferred_view_url: 'https://cdn.example.com/x.png',
-  price: '9.99'
+  price: '9.99',
+  google_product_category: '123'
 }
 
 describe('validateRow', () => {
@@ -31,9 +33,39 @@ describe('validateRow', () => {
   test('rejects non-string description', () => {
     expect(validateRow({ ...good, description: 42 })).toMatch(/description/)
   })
+  test('rejects missing description', () => {
+    const { description, ...rest } = good
+    expect(validateRow(rest)).toMatch(/description/)
+  })
+  test('rejects empty description', () => {
+    expect(validateRow({ ...good, description: '' })).toMatch(/description/)
+    expect(validateRow({ ...good, description: '   ' })).toMatch(/description/)
+  })
+  test('rejects description over the max length', () => {
+    expect(validateRow({ ...good, description: 'x'.repeat(5001) })).toMatch(/description/)
+  })
   test('rejects non-object rows', () => {
     expect(validateRow(null)).toMatch(/object/)
     expect(validateRow('str')).toMatch(/object/)
+  })
+})
+
+describe('google_product_category is mandatory', () => {
+  test('rejects a row with neither product_type nor an explicit override', () => {
+    const { google_product_category: _, ...rest } = good
+    expect(validateRow(rest)).toMatch(/google_product_category missing/)
+  })
+  test('rejects a row whose product_type has no category-map entry', () => {
+    const { google_product_category: _, ...rest } = good
+    expect(validateRow({ ...rest, product_type: 'zazzle_totally_unmapped_type' }))
+      .toMatch(/could not be resolved for product_type "zazzle_totally_unmapped_type"/)
+  })
+  test('accepts a row whose product_type resolves via config/category-map.json', () => {
+    const { google_product_category: _, ...rest } = good
+    expect(validateRow({ ...rest, product_type: 'zazzle_mug' })).toBeNull()
+  })
+  test('accepts an explicit google_product_category even with no product_type at all', () => {
+    expect(validateRow(good)).toBeNull() // `good` already carries the explicit override, no product_type
   })
 })
 
@@ -80,8 +112,7 @@ describe('validateRows', () => {
 })
 
 describe('MAX_CHUNK', () => {
-  test('is exposed and reasonable', () => {
-    expect(MAX_CHUNK).toBeGreaterThanOrEqual(250)
-    expect(MAX_CHUNK).toBeLessThanOrEqual(500)
+  test('is lowered to 50 to respect the Adobe I/O Runtime 1MB payload limit', () => {
+    expect(MAX_CHUNK).toBe(50)
   })
 })

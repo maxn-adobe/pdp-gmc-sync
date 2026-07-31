@@ -6,11 +6,12 @@ default `jest` invocation — an empty pass shows up in the report.
 
 ## Requirements before running
 
-1. GMC has provisioned an OAuth client + refresh token OR a service account, and
-   registered the GCP project against the Merchant Center account
+1. `GMC_SERVICE_ACCOUNT_JSON` contains the complete key for
+   `express-tools-gcp-account@adbe-gcp1060.iam.gserviceaccount.com`, and GCP
+   project `adbe-gcp1060` is registered against the Merchant Center account
    (`developerRegistration.registerGcp` — otherwise you'll get
    `AUTH_GCP_NOT_REGISTERED`).
-2. A test account exists (`accounts.createTestAccount`) and its ID is stored in
+2. The test Merchant account ID `582778` is stored in
    `GMC_MERCHANT_ACCOUNT_ID_TEST` in `.env`.
 3. `bootstrap-datasource --param env test` has been run and
    `GMC_DATASOURCE_ID_TEST` is populated in `.env`.
