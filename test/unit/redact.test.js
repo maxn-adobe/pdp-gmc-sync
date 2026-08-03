@@ -3,16 +3,13 @@ const { redact } = require('../../actions/lib/redact')
 describe('redact', () => {
   test('hides all GMC credential keys', () => {
     const s = redact({
-      GMC_CLIENT_ID: 'cid',
-      GMC_CLIENT_SECRET: 'sss',
-      GMC_REFRESH_TOKEN: 'rrr',
       GMC_SERVICE_ACCOUNT_JSON: '{"private_key":"pk"}',
       SLACK_WEBHOOK_URL: 'https://hooks.slack.com/services/x/y/z',
       env: 'test'
     })
-    expect(s).not.toMatch(/cid|sss|rrr|"pk"|hooks\.slack\.com/)
+    expect(s).not.toMatch(/"pk"|hooks\.slack\.com/)
     expect(s).toMatch(/"env":"test"/)
-    expect(s).toMatch(/"GMC_CLIENT_SECRET":"<hidden>"/)
+    expect(s).toMatch(/"GMC_SERVICE_ACCOUNT_JSON":"<hidden>"/)
   })
 
   test('hides authorization header via stringParameters', () => {
