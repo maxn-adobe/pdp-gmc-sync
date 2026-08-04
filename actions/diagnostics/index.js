@@ -38,7 +38,7 @@ async function main (params) {
 
   try {
     if (offerIds && offerIds.length) {
-      const results = await fetchAllStatuses(clients.products, accountId, offerIds, state, params.env)
+      const results = await fetchAllStatuses(clients.products, accountId, offerIds, state, params.env, undefined, logger)
       const { counts, itemIssueTop } = summarize(results)
       report.offerCount = results.length
       report.counts = counts
