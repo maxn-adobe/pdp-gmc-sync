@@ -4,6 +4,7 @@ const { resolveAccount, ENVS } = require('../lib/config')
 const { fetchAllStatuses, searchDisapproved, summarize } = require('../lib/diagnostics')
 const { initState } = require('../lib/syncState')
 const { postSlack, formatDigest } = require('../lib/slack')
+const { isValidImsToken } = require('../lib/imsAuth')
 const { redact } = require('../lib/redact')
 const { errorResponse, checkMissingRequestInputs } = require('../utils')
 
@@ -16,6 +17,15 @@ async function main (params) {
 
   if (!ENVS.has(params.env)) {
     return errorResponse(400, "env must be 'test' or 'prod'", logger)
+  }
+
+  try {
+    if (!(await isValidImsToken(params))) {
+      return errorResponse(401, 'invalid IMS token', logger)
+    }
+  } catch {
+    logger.error('IMS token validation request failed')
+    return errorResponse(503, 'unable to validate IMS token', logger)
   }
 
   let accountId, clients

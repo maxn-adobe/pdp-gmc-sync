@@ -1,13 +1,18 @@
 const RUN = process.env.GMC_RUN_INTEGRATION === '1'
 const describeIf = RUN ? describe : describe.skip
 
+const imsAuthorization = () => {
+  if (!process.env.IMS_TOKEN) throw new Error('IMS_TOKEN is required for integration tests')
+  return `Bearer ${process.env.IMS_TOKEN}`
+}
+
 const paramsFromEnv = () => ({
   LOG_LEVEL: process.env.LOG_LEVEL || 'info',
   GMC_SERVICE_ACCOUNT_JSON: process.env.GMC_SERVICE_ACCOUNT_JSON,
   GMC_GCP_PROJECT_ID: process.env.GMC_GCP_PROJECT_ID,
   GMC_MERCHANT_ACCOUNT_ID_TEST: process.env.GMC_MERCHANT_ACCOUNT_ID_TEST,
   GMC_DATASOURCE_ID_TEST: process.env.GMC_DATASOURCE_ID_TEST,
-  __ow_headers: { authorization: 'Bearer test' }
+  __ow_headers: { authorization: imsAuthorization() }
 })
 
 const sampleRow = {
