@@ -1,0 +1,13 @@
+{
+  "pdpAllowedHosts": [
+    "store.example.com",
+    "www.adobe.com",
+    "main--da-express-milo--adobecom.aem.live"
+  ],
+  "brand": "Adobe Express",
+  "availability": "IN_STOCK",
+  "condition": "NEW",
+  "currency": "USD",
+  "feedLabel": "US",
+  "contentLanguage": "en"
+}

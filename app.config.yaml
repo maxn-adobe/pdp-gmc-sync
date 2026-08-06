@@ -20,7 +20,7 @@ application:
               GMC_DATASOURCE_ID_TEST: $GMC_DATASOURCE_ID_TEST
               GMC_DATASOURCE_ID_PROD: $GMC_DATASOURCE_ID_PROD
             annotations:
-              require-adobe-auth: true
+              require-adobe-auth: false
               final: true
             limits:
               timeout: 60000
@@ -42,7 +42,7 @@ application:
               GMC_DATASOURCE_ID_PROD: $GMC_DATASOURCE_ID_PROD
               SLACK_WEBHOOK_URL: $SLACK_WEBHOOK_URL
             annotations:
-              require-adobe-auth: true
+              require-adobe-auth: false
               final: true
             limits:
               timeout: 60000
@@ -61,7 +61,7 @@ application:
               GMC_MERCHANT_ACCOUNT_ID_TEST: $GMC_MERCHANT_ACCOUNT_ID_TEST
               GMC_MERCHANT_ACCOUNT_ID_PROD: $GMC_MERCHANT_ACCOUNT_ID_PROD
             annotations:
-              require-adobe-auth: true
+              require-adobe-auth: false
               final: true
             limits:
               timeout: 60000
