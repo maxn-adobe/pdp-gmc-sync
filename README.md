@@ -18,7 +18,8 @@ Sections **§4 (corrections)** and **§15 (security)** are non-negotiable.
 
 Package name in the manifest: `gmc-feed-sync`. Runtime: `nodejs:22`. All web
 actions are marked `final: true` so injected secrets cannot be overridden by
-invocation params.
+invocation params. Each web action also validates its bearer token with
+`@adobe/aio-lib-ims` before creating a Merchant Center client.
 
 ## Setup
 
@@ -128,6 +129,8 @@ Deploys and pushes are performed by the repo owner — not by this tooling.
   Authorization header are replaced with `<hidden>`.
 - All web actions are `require-adobe-auth: true` + `final: true`. Consider
   `disable-download: true` on production actions once stable (one-way).
+- Bearer tokens are extracted from the request header and validated with IMS.
+  Invalid tokens return `401`; an IMS outage fails closed with `503`.
 - Incoming rows are allowlist-validated in [`validate.js`](./actions/lib/validate.js).
   Chunks are capped at 50 products (Adobe I/O Runtime's 1MB payload limit).
 - Outbound calls are HTTPS-only. `rejectUnauthorized: false` is banned.
@@ -152,6 +155,7 @@ actions/
     insertWithRetry.js              # single insert + retry-once on 5xx/429
     googleError.js                  # gax/gRPC + REST → { code, status, reason, retriable }
     diagnostics.js                  # products.get / reports.search → structured report
+    imsAuth.js                      # validates incoming bearer tokens with Adobe IMS
     slack.js                        # digest POST to webhook (HTTPS-only)
     redact.js                       # log-safe stringifier
 config/

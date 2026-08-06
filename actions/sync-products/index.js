@@ -6,6 +6,7 @@ const { validateRows, MAX_CHUNK } = require("../lib/validate");
 const { insertWithRetry } = require("../lib/insertWithRetry");
 const { runPool } = require("../lib/concurrency");
 const { initState, recordPushes } = require("../lib/syncState");
+const { isValidImsToken } = require("../lib/imsAuth");
 const { redact } = require("../lib/redact");
 const { errorResponse, checkMissingRequestInputs } = require("../utils");
 
@@ -37,6 +38,15 @@ async function main(params) {
     const validParamsValue = areParamsValid(params, logger);
     if (validParamsValue !== true) {
         return validParamsValue;
+    }
+
+    try {
+        if (!(await isValidImsToken(params))) {
+            return errorResponse(401, "invalid IMS token", logger);
+        }
+    } catch {
+        logger.error("IMS token validation request failed");
+        return errorResponse(503, "unable to validate IMS token", logger);
     }
 
     const statePromise = initState(logger);
