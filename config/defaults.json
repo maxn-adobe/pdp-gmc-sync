@@ -1,5 +1,6 @@
 {
   "pdpAllowedHosts": [
+    "store.example.com",
     "www.adobe.com",
     "main--da-express-milo--adobecom.aem.live"
   ],

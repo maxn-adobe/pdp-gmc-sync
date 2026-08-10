@@ -1,6 +1,20 @@
 jest.mock('@adobe/aio-sdk', () => ({
   Core: { Logger: () => ({ debug: () => {}, info: () => {}, error: () => {} }) }
 }))
+const mockValidateToken = jest.fn(async token => ({ valid: token === 'stub' }))
+const mockValidateTokenAllowList = jest.fn(async token => ({ valid: token === 'stub' }))
+const mockGetTokenData = jest.fn(() => ({
+  as: 'ims-na1',
+  client_id: '<da.live client_id>',
+  type: 'access_token'
+}))
+jest.mock('@adobe/aio-lib-ims', () => ({
+  Ims: jest.fn(() => ({
+    validateToken: mockValidateToken,
+    validateTokenAllowList: mockValidateTokenAllowList
+  })),
+  getTokenData: mockGetTokenData
+}))
 jest.mock('../../actions/lib/gmcClients', () => ({
   makeClients: jest.fn((params) => {
     if (!params.GMC_SERVICE_ACCOUNT_JSON) {
@@ -12,6 +26,7 @@ jest.mock('../../actions/lib/gmcClients', () => ({
   })
 }))
 
+const { makeClients } = require('../../actions/lib/gmcClients')
 const action = require('../../actions/sync-products/index')
 
 const validEnv = {
@@ -38,6 +53,13 @@ const goodRow = {
 }
 
 describe('sync-products action', () => {
+  beforeEach(() => {
+    mockValidateToken.mockClear()
+    mockValidateTokenAllowList.mockClear()
+    mockGetTokenData.mockClear()
+    makeClients.mockClear()
+  })
+
   test('400 when env is missing', async () => {
     const res = await action.main({ ...validEnv, products: [goodRow] })
     expect(res.error?.statusCode).toBe(400)
@@ -54,6 +76,23 @@ describe('sync-products action', () => {
     const res = await action.main({ ...noAuth, env: 'test', products: [goodRow] })
     expect(res.error?.statusCode).toBe(400)
     expect(res.error.body.error).toMatch(/Authorization/i)
+  })
+
+  test('401 when the bearer token is not a valid IMS token', async () => {
+    mockValidateTokenAllowList.mockResolvedValueOnce({ valid: false })
+    const res = await action.main({ ...validEnv, env: 'test', products: [goodRow] })
+    expect(res.error?.statusCode).toBe(401)
+    expect(res.error.body.error).toBe('invalid IMS token')
+    expect(mockValidateTokenAllowList).toHaveBeenCalledWith('stub', ['<da.live client_id>'])
+    expect(makeClients).not.toHaveBeenCalled()
+  })
+
+  test('503 when IMS token validation is unavailable', async () => {
+    mockValidateTokenAllowList.mockRejectedValueOnce(new Error('IMS unavailable'))
+    const res = await action.main({ ...validEnv, env: 'test', products: [goodRow] })
+    expect(res.error?.statusCode).toBe(503)
+    expect(res.error.body.error).toBe('unable to validate IMS token')
+    expect(makeClients).not.toHaveBeenCalled()
   })
 
   test('400 when products missing or empty', async () => {

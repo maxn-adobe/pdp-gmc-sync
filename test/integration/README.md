@@ -15,9 +15,12 @@ default `jest` invocation — an empty pass shows up in the report.
    `GMC_MERCHANT_ACCOUNT_ID_TEST` in `.env`.
 3. `bootstrap-datasource --param env test` has been run and
    `GMC_DATASOURCE_ID_TEST` is populated in `.env`.
-4. `.env` is loaded into the shell:
+4. `IMS_TOKEN` contains a current user IMS access token. Supply it in the shell
+   for the test run; do not store it in source control.
+5. `.env` is loaded into the shell:
    ```
    set -a && source .env && set +a
+   export IMS_TOKEN='<current IMS access token>'
    GMC_RUN_INTEGRATION=1 npx jest test/integration
    ```
 
