@@ -1,16 +1,3 @@
-const { parseGoogleError } = require('./googleError')
-const { runPool } = require('./concurrency')
-const { isStale, getPushedAt } = require('./syncState')
-
-const FEED_LABEL = 'US'
-const CONTENT_LANGUAGE = 'en'
-
-// Google documents "several minutes" for a freshly-submitted offer to
-// become visible via products.get. A NOT_FOUND within this window of our
-// last recorded push is normal propagation delay, not a real failure —
-// well short of syncState.js's 24h TTL, which just bounds how long we
-// keep the record around at all.
-const PROPAGATION_WINDOW_MS = 45 * 60 * 1000
 const PRODUCT_LIST_PAGE_SIZE = 1000
 const REPORT_PAGE_SIZE = 1000
 const REPORT_ID_BATCH_SIZE = 250
@@ -75,22 +62,99 @@ function plainProductView (view) {
   return JSON.parse(JSON.stringify(view || {}))
 }
 
-async function listDataSourceProductIds (productsClient, accountId, dataSource, offerIds) {
+function aggregatedStatusFromProduct (product) {
+  const statuses = product?.productStatus?.destinationStatuses || []
+  const hasCountries = field => statuses.some(status => status[field]?.length)
+  const approved = hasCountries('approvedCountries')
+  const pending = hasCountries('pendingCountries')
+  const disapproved = hasCountries('disapprovedCountries')
+  if (approved && disapproved) return 'ELIGIBLE_LIMITED'
+  if (approved) return 'ELIGIBLE'
+  if (pending) return 'PENDING'
+  if (disapproved) return 'NOT_ELIGIBLE_OR_DISAPPROVED'
+  return 'AGGREGATED_REPORTING_CONTEXT_STATUS_UNSPECIFIED'
+}
+
+function productIssueSeverity (severity) {
+  if (typeof severity !== 'number') return severity || ''
+  return ({ 1: 'NOT_IMPACTED', 2: 'DEMOTED', 3: 'DISAPPROVED' })[severity] || String(severity)
+}
+
+function productIssueToDiagnostic (issue) {
+  const severity = productIssueSeverity(issue.severity)
+  const countries = issue.applicableCountries || []
+  const perContext = issue.reportingContext
+    ? [{
+        reportingContext: issue.reportingContext,
+        disapprovedCountries: severity === 'DISAPPROVED' ? countries : [],
+        demotedCountries: severity === 'DEMOTED' ? countries : []
+      }]
+    : []
+  return {
+    type: {
+      code: issue.code || '',
+      canonicalAttribute: issue.attribute || ''
+    },
+    severity: {
+      aggregatedSeverity: severity,
+      severityPerReportingContext: perContext
+    },
+    resolution: String(issue.resolution || '').toUpperCase()
+  }
+}
+
+function productToDiagnostic (rawProduct) {
+  const product = plainProductView(rawProduct)
+  const attributes = product.productAttributes || {}
+  const productStatus = product.productStatus || {}
+  return {
+    id: productIdFromName(product.name),
+    offerId: product.offerId,
+    languageCode: product.contentLanguage,
+    feedLabel: product.feedLabel,
+    title: attributes.title,
+    brand: attributes.brand,
+    price: attributes.price,
+    condition: attributes.condition,
+    availability: attributes.availability,
+    shippingLabel: attributes.shippingLabel,
+    gtin: attributes.gtins || [],
+    itemGroupId: attributes.itemGroupId,
+    aggregatedReportingContextStatus: aggregatedStatusFromProduct(product),
+    statusPerReportingContext: productStatus.destinationStatuses || [],
+    itemIssues: (productStatus.itemLevelIssues || []).map(productIssueToDiagnostic),
+    dataSource: product.dataSource,
+    productAttributes: attributes,
+    productStatus,
+    diagnosticSource: 'products'
+  }
+}
+
+async function listDataSourceProducts (productsClient, accountId, dataSource, offerIds) {
   const [products] = await productsClient.listProducts({
     parent: `accounts/${accountId}`,
     pageSize: PRODUCT_LIST_PAGE_SIZE
   })
   const requested = offerIds?.length ? new Set(offerIds.map(String)) : null
-  return [...new Set(products
+  return products
     .filter(product => product.dataSource === dataSource)
     .filter(product => !requested || requested.has(String(product.offerId)))
+}
+
+async function listDataSourceProductIds (productsClient, accountId, dataSource, offerIds) {
+  const products = await listDataSourceProducts(productsClient, accountId, dataSource, offerIds)
+  return [...new Set(products
     .map(product => productIdFromName(product.name))
     .filter(Boolean))]
 }
 
 async function searchProductDiagnostics (reportsClient, productsClient, accountId, dataSource, offerIds) {
-  const productIds = await listDataSourceProductIds(productsClient, accountId, dataSource, offerIds)
-  const productViews = []
+  const products = await listDataSourceProducts(productsClient, accountId, dataSource, offerIds)
+  const productsById = new Map(products
+    .map(product => [productIdFromName(product.name), product])
+    .filter(([id]) => id))
+  const productIds = [...productsById.keys()]
+  const productViewsById = new Map()
   for (let index = 0; index < productIds.length; index += REPORT_ID_BATCH_SIZE) {
     const batch = productIds.slice(index, index + REPORT_ID_BATCH_SIZE)
     const [rows] = await reportsClient.search({
@@ -99,83 +163,16 @@ async function searchProductDiagnostics (reportsClient, productsClient, accountI
       pageSize: REPORT_PAGE_SIZE
     })
     for (const row of rows) {
-      if (row.productView) productViews.push(plainProductView(row.productView))
+      if (row.productView) {
+        const productView = plainProductView(row.productView)
+        productViewsById.set(productView.id, { ...productView, diagnosticSource: 'reports' })
+      }
     }
   }
+  const productViews = productIds.map(id => (
+    productViewsById.get(id) || productToDiagnostic(productsById.get(id))
+  ))
   return productViews.sort((a, b) => String(a.offerId || '').localeCompare(String(b.offerId || '')))
-}
-
-function classify (product) {
-  const statuses = product?.productStatus?.destinationStatuses || []
-  const has = (bucket) => statuses.some(s => Array.isArray(s?.[bucket]) && s[bucket].length > 0)
-  if (has('approvedCountries')) return 'active'
-  if (has('pendingCountries')) return 'pending'
-  if (has('disapprovedCountries')) return 'disapproved'
-  return 'unknown'
-}
-
-function collectIssues (product) {
-  const issues = product?.productStatus?.itemLevelIssues || []
-  return issues.map(i => ({
-    code: i.code || '',
-    severity: i.severity || '',
-    resolution: i.resolution || '',
-    attribute: i.attribute || '',
-    description: i.description || '',
-    documentation: i.documentation || ''
-  }))
-}
-
-// True if we have a record of pushing this offerId ourselves within the
-// propagation window — i.e. a NOT_FOUND from products.get right now is
-// expected, not anomalous. Fails open (false) on any missing/unparseable
-// data or a State outage, same as isStale in actions/lib/syncState.js.
-async function isRecentlyPushed (state, env, accountId, offerId, logger) {
-  const pushedAt = await getPushedAt(state, env, accountId, offerId, logger)
-  if (pushedAt == null) return false
-  const withinWindow = Date.now() - pushedAt < PROPAGATION_WINDOW_MS
-  return withinWindow
-}
-
-async function fetchProductStatus (productsClient, accountId, offerId, state, env, logger) {
-  const name = `accounts/${accountId}/products/${CONTENT_LANGUAGE}~${FEED_LABEL}~${offerId}`
-  try {
-    const [product] = await productsClient.getProduct({ name })
-    const result = {
-      offerId,
-      ok: true,
-      status: classify(product),
-      issues: collectIssues(product),
-      name: product.name
-    }
-    // Never replaces `status` — just flags that this particular value may be
-    // a stale leftover from before the caller's last push, not Google's
-    // verdict on the current data (see actions/lib/syncState.js).
-    if (await isStale(state, env, accountId, offerId, product, logger)) {
-      result.stale = true
-    }
-    return result
-  } catch (err) {
-    const p = parseGoogleError(err)
-    if (p.status === 'NOT_FOUND' && await isRecentlyPushed(state, env, accountId, offerId, logger)) {
-      return { offerId, ok: true, status: 'pending', stale: true }
-    }
-    return { offerId, ok: false, status: 'error', code: p.code, statusCode: p.status, reason: p.reason, message: p.message }
-  }
-}
-
-async function fetchAllStatuses (productsClient, accountId, offerIds, state, env, concurrency = 15, logger) {
-  return runPool(offerIds, (id) => fetchProductStatus(productsClient, accountId, id, state, env, logger), concurrency)
-}
-
-async function searchDisapproved (reportsClient, accountId, pageSize = 1000) {
-  const query = "SELECT offer_id, id, title, price, item_issues FROM product_view WHERE aggregated_reporting_context_status = 'NOT_ELIGIBLE_OR_DISAPPROVED'"
-  const [rows] = await reportsClient.search({
-    parent: `accounts/${accountId}`,
-    query,
-    pageSize
-  })
-  return rows
 }
 
 function classifyProductView (productView) {
@@ -220,34 +217,13 @@ function summarizeProductDiagnostics (productViews) {
   return { counts, itemIssueTop }
 }
 
-function summarize (results) {
-  const counts = { active: 0, pending: 0, disapproved: 0, unknown: 0, error: 0 }
-  const issueTally = new Map()
-  for (const r of results) {
-    if (!r.ok) { counts.error++; continue }
-    counts[r.status] = (counts[r.status] || 0) + 1
-    for (const i of (r.issues || [])) {
-      const key = `${i.severity}|${i.code}|${i.attribute}`
-      const cur = issueTally.get(key) || { code: i.code, severity: i.severity, attribute: i.attribute, count: 0 }
-      cur.count++
-      issueTally.set(key, cur)
-    }
-  }
-  const itemIssueTop = [...issueTally.values()].sort((a, b) => b.count - a.count)
-  return { counts, itemIssueTop }
-}
-
 module.exports = {
-  fetchProductStatus,
-  fetchAllStatuses,
-  searchDisapproved,
   searchProductDiagnostics,
   buildProductDiagnosticsQuery,
+  listDataSourceProducts,
   listDataSourceProductIds,
+  productToDiagnostic,
   summarizeProductDiagnostics,
   classifyProductView,
-  summarize,
-  classify,
-  collectIssues,
   PRODUCT_DIAGNOSTIC_FIELDS
 }

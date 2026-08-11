@@ -93,7 +93,9 @@ Each object in the POST payload's `products` can have the following fields.:
 
 Invoke `diagnostics` with `env` and, optionally, an `offerIds` array. The action
 uses the environment's configured `GMC_DATASOURCE_ID_{TEST|PROD}` and returns
-only products owned by that data source.
+only products owned by that data source. For compatibility with Adobe action
+parameter serialization, a single comma-separated `offerIds` value is unpacked
+into individual IDs, though a JSON array remains the preferred request shape.
 
 Google's MCQL `product_view` does not expose a `data_source` field. To keep the
 scope exact, the action first calls `products.list`, retains products whose
@@ -112,9 +114,31 @@ The response includes:
   and resolution.
 - `results`: detailed `productView` objects using the API's camelCase response
   field names, including `aggregatedReportingContextStatus`,
-  `statusPerReportingContext`, and `itemIssues`.
+  `statusPerReportingContext`, and `itemIssues`. `diagnosticSource` is
+  `reports` when MCQL supplied the row. If the processed Product is already
+  available from `products.list` but has not reached `product_view` yet, the
+  action derives the same diagnostic fields from `productStatus` and sets
+  `diagnosticSource` to `products`; this includes real per-context
+  `pendingCountries` returned by Google.
 - `missingOfferIds`: present when `offerIds` was requested; these products are
-  not yet visible as processed products in the configured data source.
+  not yet visible as processed products in the configured data source. Google
+  does not expose their unprocessed ProductInput through `products.get/list` or
+  `reports.search`.
+
+Google exposes two distinct stages that should not be conflated. An accepted
+`ProductInput` awaiting creation of its processed `Product` is not readable:
+the ProductInput API has only `insert`, `patch`, and `delete`. Once a processed
+Product exists, `products.list/get` can return real per-context
+`pendingCountries`, and `product_view` can return the aggregate `PENDING`
+status. Diagnostics reports only these Google-sourced statuses; it does not
+synthesize pending results for unprocessed inputs.
+
+After Google returns a product through either `products.list` or
+`product_view`, diagnostics deletes that offer's `pushed_at` timestamp from
+Adobe State because the propagation marker is no longer needed. Requested
+offers still listed in `missingOfferIds` remain cached for a later diagnostics
+call. State cleanup is best-effort: a State outage is logged but does not change
+the successful Merchant API response.
 
 New or updated inputs can take several minutes to become processed products, so
 they might initially appear in `missingOfferIds` or be absent from a full-source

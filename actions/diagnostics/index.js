@@ -2,10 +2,31 @@ const { Core } = require('@adobe/aio-sdk')
 const { makeClients } = require('../lib/gmcClients')
 const { resolveAccount, resolveDataSource, ENVS } = require('../lib/config')
 const { searchProductDiagnostics, summarizeProductDiagnostics } = require('../lib/diagnostics')
+const { initState, clearPushes } = require('../lib/syncState')
 const { postSlack, formatDigest } = require('../lib/slack')
 const { isValidImsToken } = require('../lib/imsAuth')
 const { redact } = require('../lib/redact')
 const { errorResponse, checkMissingRequestInputs } = require('../utils')
+
+function normalizeOfferIds (input) {
+  if (input == null) return []
+  let values = Array.isArray(input) ? input : [input]
+  if (values.length === 1 && typeof values[0] === 'string') {
+    const packed = values[0].trim()
+    if (packed.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(packed)
+        if (Array.isArray(parsed)) values = parsed
+      } catch {
+        // Fall through to comma-separated action parameter handling.
+      }
+    }
+    if (values.length === 1 && typeof values[0] === 'string' && values[0].includes(',')) {
+      values = values[0].split(',')
+    }
+  }
+  return [...new Set(values.map(value => String(value).trim()).filter(Boolean))]
+}
 
 async function main (params) {
   const logger = Core.Logger('diagnostics', { level: params.LOG_LEVEL || 'info' })
@@ -37,9 +58,7 @@ async function main (params) {
     return errorResponse(500, 'server misconfigured — see logs', logger)
   }
 
-  const requestedOfferIds = Array.isArray(params.offerIds)
-    ? [...new Set(params.offerIds.filter(Boolean).map(String))]
-    : []
+  const requestedOfferIds = normalizeOfferIds(params.offerIds)
   const offerIds = requestedOfferIds.length ? requestedOfferIds : null
   if (offerIds && offerIds.length > 5000) {
     return errorResponse(400, 'offerIds too large; keep <= 5000 per diagnostics call', logger)
@@ -56,6 +75,7 @@ async function main (params) {
   }
 
   try {
+    const statePromise = initState(logger)
     const results = await searchProductDiagnostics(
       clients.reports,
       clients.products,
@@ -63,16 +83,24 @@ async function main (params) {
       dataSource,
       offerIds
     )
-    const { counts, itemIssueTop } = summarizeProductDiagnostics(results)
-    report.offerCount = results.length
-    report.counts = counts
-    report.itemIssueTop = itemIssueTop
-    report.results = results
     if (offerIds) {
       const returnedOfferIds = new Set(results.map(product => String(product.offerId)))
       report.requestedOfferCount = offerIds.length
       report.missingOfferIds = offerIds.filter(offerId => !returnedOfferIds.has(offerId))
     }
+    const { counts, itemIssueTop } = summarizeProductDiagnostics(results)
+    report.offerCount = results.length
+    report.counts = counts
+    report.itemIssueTop = itemIssueTop
+    report.results = results
+    const state = await statePromise
+    await clearPushes(
+      state,
+      params.env,
+      accountId,
+      results.map(product => product.offerId).filter(Boolean),
+      logger
+    )
   } catch (e) {
     logger.error(`diagnostics fetch failed: ${e.message}`)
     return errorResponse(502, 'failed to read from Merchant Center', logger)
@@ -89,4 +117,4 @@ async function main (params) {
   return { statusCode: 200, body: report }
 }
 
-module.exports.main = main
+module.exports = { main, normalizeOfferIds }
