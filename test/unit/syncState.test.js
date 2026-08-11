@@ -6,13 +6,18 @@ jest.mock('@adobe/aio-lib-state', () => ({
 }))
 
 const stateLib = require('@adobe/aio-lib-state')
-const { initState, recordPushes, isStale, pushedAtKey, TTL_SECONDS } = require('../../actions/lib/syncState')
+const { initState, recordPushes, isStale, getPushedAt, pushedAtKey, TTL_SECONDS } = require('../../actions/lib/syncState')
 
 const okProduct = (lastUpdateDate) => ({ productStatus: { lastUpdateDate } })
 
 describe('pushedAtKey', () => {
   test('namespaces by env, account, and offerId', () => {
-    expect(pushedAtKey('test', '123', 'abc')).toBe('pushed_at:test:123:abc')
+    expect(pushedAtKey('test', '123', 'abc')).toBe('pushed_at.dGVzdA.MTIz.YWJj')
+  })
+
+  test('produces a key matching the State service\'s allowed key pattern even with special characters', () => {
+    const key = pushedAtKey('test', '123', 'sku:456/red weird~offer')
+    expect(key).toMatch(/^[a-zA-Z0-9-_.]{1,1024}$/)
   })
 })
 
@@ -52,8 +57,8 @@ describe('recordPushes', () => {
     const state = { put: mockPut }
     await recordPushes(state, 'test', '123', ['abc', 'def'])
     expect(mockPut).toHaveBeenCalledTimes(2)
-    expect(mockPut).toHaveBeenCalledWith('pushed_at:test:123:abc', expect.any(String), { ttl: TTL_SECONDS })
-    expect(mockPut).toHaveBeenCalledWith('pushed_at:test:123:def', expect.any(String), { ttl: TTL_SECONDS })
+    expect(mockPut).toHaveBeenCalledWith('pushed_at.dGVzdA.MTIz.YWJj', expect.any(String), { ttl: TTL_SECONDS })
+    expect(mockPut).toHaveBeenCalledWith('pushed_at.dGVzdA.MTIz.ZGVm', expect.any(String), { ttl: TTL_SECONDS })
   })
 
   test('logs but does not throw when a put rejects', async () => {
@@ -62,6 +67,41 @@ describe('recordPushes', () => {
     const logger = { error: jest.fn() }
     await expect(recordPushes(state, 'test', '123', ['abc'], logger)).resolves.toBeUndefined()
     expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('state unavailable'))
+  })
+})
+
+describe('getPushedAt', () => {
+  beforeEach(() => { mockGet.mockClear() })
+
+  test('null when state is null (fail open)', async () => {
+    expect(await getPushedAt(null, 'test', '123', 'abc')).toBeNull()
+    expect(mockGet).not.toHaveBeenCalled()
+  })
+
+  test('null when there is no stored entry', async () => {
+    mockGet.mockResolvedValueOnce(undefined)
+    const state = { get: mockGet }
+    expect(await getPushedAt(state, 'test', '123', 'abc')).toBeNull()
+    expect(mockGet).toHaveBeenCalledWith(pushedAtKey('test', '123', 'abc'))
+  })
+
+  test('the parsed timestamp when a valid entry is stored', async () => {
+    const pushedAt = Date.now()
+    mockGet.mockResolvedValueOnce({ value: String(pushedAt), expiration: '' })
+    const state = { get: mockGet }
+    expect(await getPushedAt(state, 'test', '123', 'abc')).toBe(pushedAt)
+  })
+
+  test('null when the stored value is not a parseable number', async () => {
+    mockGet.mockResolvedValueOnce({ value: 'not-a-number', expiration: '' })
+    const state = { get: mockGet }
+    expect(await getPushedAt(state, 'test', '123', 'abc')).toBeNull()
+  })
+
+  test('fails open (null) when state.get rejects', async () => {
+    mockGet.mockRejectedValueOnce(new Error('state unavailable'))
+    const state = { get: mockGet }
+    expect(await getPushedAt(state, 'test', '123', 'abc')).toBeNull()
   })
 })
 

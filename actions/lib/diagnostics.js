@@ -1,9 +1,16 @@
 const { parseGoogleError } = require('./googleError')
 const { runPool } = require('./concurrency')
-const { isStale } = require('./syncState')
+const { isStale, getPushedAt } = require('./syncState')
 
 const FEED_LABEL = 'US'
 const CONTENT_LANGUAGE = 'en'
+
+// Google documents "several minutes" for a freshly-submitted offer to
+// become visible via products.get. A NOT_FOUND within this window of our
+// last recorded push is normal propagation delay, not a real failure —
+// well short of syncState.js's 24h TTL, which just bounds how long we
+// keep the record around at all.
+const PROPAGATION_WINDOW_MS = 45 * 60 * 1000
 
 function classify (product) {
   const statuses = product?.productStatus?.destinationStatuses || []
@@ -26,7 +33,18 @@ function collectIssues (product) {
   }))
 }
 
-async function fetchProductStatus (productsClient, accountId, offerId, state, env) {
+// True if we have a record of pushing this offerId ourselves within the
+// propagation window — i.e. a NOT_FOUND from products.get right now is
+// expected, not anomalous. Fails open (false) on any missing/unparseable
+// data or a State outage, same as isStale in actions/lib/syncState.js.
+async function isRecentlyPushed (state, env, accountId, offerId, logger) {
+  const pushedAt = await getPushedAt(state, env, accountId, offerId, logger)
+  if (pushedAt == null) return false
+  const withinWindow = Date.now() - pushedAt < PROPAGATION_WINDOW_MS
+  return withinWindow
+}
+
+async function fetchProductStatus (productsClient, accountId, offerId, state, env, logger) {
   const name = `accounts/${accountId}/products/${CONTENT_LANGUAGE}~${FEED_LABEL}~${offerId}`
   try {
     const [product] = await productsClient.getProduct({ name })
@@ -40,18 +58,21 @@ async function fetchProductStatus (productsClient, accountId, offerId, state, en
     // Never replaces `status` — just flags that this particular value may be
     // a stale leftover from before the caller's last push, not Google's
     // verdict on the current data (see actions/lib/syncState.js).
-    if (await isStale(state, env, accountId, offerId, product)) {
+    if (await isStale(state, env, accountId, offerId, product, logger)) {
       result.stale = true
     }
     return result
   } catch (err) {
     const p = parseGoogleError(err)
+    if (p.status === 'NOT_FOUND' && await isRecentlyPushed(state, env, accountId, offerId, logger)) {
+      return { offerId, ok: true, status: 'pending', stale: true }
+    }
     return { offerId, ok: false, status: 'error', code: p.code, statusCode: p.status, reason: p.reason, message: p.message }
   }
 }
 
-async function fetchAllStatuses (productsClient, accountId, offerIds, state, env, concurrency = 15) {
-  return runPool(offerIds, (id) => fetchProductStatus(productsClient, accountId, id, state, env), concurrency)
+async function fetchAllStatuses (productsClient, accountId, offerIds, state, env, concurrency = 15, logger) {
+  return runPool(offerIds, (id) => fetchProductStatus(productsClient, accountId, id, state, env, logger), concurrency)
 }
 
 async function searchDisapproved (reportsClient, accountId, pageSize = 1000) {

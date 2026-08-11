@@ -1,8 +1,9 @@
 jest.mock('../../actions/lib/syncState', () => ({
-  isStale: jest.fn()
+  isStale: jest.fn(),
+  getPushedAt: jest.fn()
 }))
 
-const { isStale } = require('../../actions/lib/syncState')
+const { isStale, getPushedAt } = require('../../actions/lib/syncState')
 const { fetchProductStatus, fetchAllStatuses, classify, collectIssues, summarize } = require('../../actions/lib/diagnostics')
 
 const approvedProduct = {
@@ -77,7 +78,39 @@ describe('fetchProductStatus', () => {
     const state = { fake: 'state' }
     const productsClient = { getProduct: jest.fn(async () => [approvedProduct]) }
     await fetchProductStatus(productsClient, '123', 'abc', state, 'test')
-    expect(isStale).toHaveBeenCalledWith(state, 'test', '123', 'abc', approvedProduct)
+    expect(isStale).toHaveBeenCalledWith(state, 'test', '123', 'abc', approvedProduct, undefined)
+  })
+
+  describe('NOT_FOUND handling', () => {
+    beforeEach(() => { getPushedAt.mockReset() })
+    const notFoundError = () => Object.assign(new Error('5 NOT_FOUND: no product found'), { code: 5 })
+
+    test('NOT_FOUND with a recent recorded push is reported as pending, not an error', async () => {
+      getPushedAt.mockResolvedValue(Date.now() - 5 * 60 * 1000)
+      const state = { fake: 'state' }
+      const productsClient = { getProduct: jest.fn(async () => { throw notFoundError() }) }
+      const result = await fetchProductStatus(productsClient, '123', 'abc', state, 'test')
+      expect(result).toEqual({ offerId: 'abc', ok: true, status: 'pending', stale: true })
+      expect(getPushedAt).toHaveBeenCalledWith(state, 'test', '123', 'abc', undefined)
+    })
+
+    test('NOT_FOUND with no recorded push at all is a genuine error', async () => {
+      getPushedAt.mockResolvedValue(null)
+      const productsClient = { getProduct: jest.fn(async () => { throw notFoundError() }) }
+      const result = await fetchProductStatus(productsClient, '123', 'abc', { fake: 'state' }, 'test')
+      expect(result.ok).toBe(false)
+      expect(result.status).toBe('error')
+      expect(result.statusCode).toBe('NOT_FOUND')
+    })
+
+    test('NOT_FOUND with an old/expired recorded push is a genuine error', async () => {
+      getPushedAt.mockResolvedValue(Date.now() - 2 * 60 * 60 * 1000)
+      const productsClient = { getProduct: jest.fn(async () => { throw notFoundError() }) }
+      const result = await fetchProductStatus(productsClient, '123', 'abc', { fake: 'state' }, 'test')
+      expect(result.ok).toBe(false)
+      expect(result.status).toBe('error')
+      expect(result.statusCode).toBe('NOT_FOUND')
+    })
   })
 })
 
