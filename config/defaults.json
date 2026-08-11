@@ -9,5 +9,9 @@
   "condition": "NEW",
   "currency": "USD",
   "feedLabel": "US",
-  "contentLanguage": "en"
+  "contentLanguage": "en",
+  "age_group": "adult",
+  "gender": "unisex",
+  "color": "white",
+  "size": "OSFA"
 }
