@@ -11,6 +11,99 @@ const CONTENT_LANGUAGE = 'en'
 // well short of syncState.js's 24h TTL, which just bounds how long we
 // keep the record around at all.
 const PROPAGATION_WINDOW_MS = 45 * 60 * 1000
+const PRODUCT_LIST_PAGE_SIZE = 1000
+const REPORT_PAGE_SIZE = 1000
+const REPORT_ID_BATCH_SIZE = 250
+
+const PRODUCT_DIAGNOSTIC_FIELDS = [
+  'id',
+  'channel',
+  'language_code',
+  'feed_label',
+  'offer_id',
+  'title',
+  'brand',
+  'category_l1',
+  'category_l2',
+  'category_l3',
+  'category_l4',
+  'category_l5',
+  'product_type_l1',
+  'product_type_l2',
+  'product_type_l3',
+  'product_type_l4',
+  'product_type_l5',
+  'price',
+  'condition',
+  'availability',
+  'shipping_label',
+  'gtin',
+  'item_group_id',
+  'thumbnail_link',
+  'creation_time',
+  'expiration_date',
+  'aggregated_reporting_context_status',
+  'status_per_reporting_context',
+  'item_issues',
+  'click_potential',
+  'click_potential_rank'
+]
+
+function productIdFromName (name) {
+  const marker = '/products/'
+  const index = String(name || '').indexOf(marker)
+  return index === -1 ? null : String(name).slice(index + marker.length)
+}
+
+function quoteMcqlString (value) {
+  return `'${String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`
+}
+
+function buildProductDiagnosticsQuery (productIds) {
+  if (!productIds.length) throw new Error('productIds must not be empty')
+  return [
+    'SELECT',
+    `  ${PRODUCT_DIAGNOSTIC_FIELDS.join(',\n  ')}`,
+    'FROM product_view',
+    `WHERE id IN (${productIds.map(quoteMcqlString).join(', ')})`,
+    'ORDER BY offer_id'
+  ].join('\n')
+}
+
+function plainProductView (view) {
+  if (view && typeof view.toJSON === 'function') return view.toJSON()
+  return JSON.parse(JSON.stringify(view || {}))
+}
+
+async function listDataSourceProductIds (productsClient, accountId, dataSource, offerIds) {
+  const [products] = await productsClient.listProducts({
+    parent: `accounts/${accountId}`,
+    pageSize: PRODUCT_LIST_PAGE_SIZE
+  })
+  const requested = offerIds?.length ? new Set(offerIds.map(String)) : null
+  return [...new Set(products
+    .filter(product => product.dataSource === dataSource)
+    .filter(product => !requested || requested.has(String(product.offerId)))
+    .map(product => productIdFromName(product.name))
+    .filter(Boolean))]
+}
+
+async function searchProductDiagnostics (reportsClient, productsClient, accountId, dataSource, offerIds) {
+  const productIds = await listDataSourceProductIds(productsClient, accountId, dataSource, offerIds)
+  const productViews = []
+  for (let index = 0; index < productIds.length; index += REPORT_ID_BATCH_SIZE) {
+    const batch = productIds.slice(index, index + REPORT_ID_BATCH_SIZE)
+    const [rows] = await reportsClient.search({
+      parent: `accounts/${accountId}`,
+      query: buildProductDiagnosticsQuery(batch),
+      pageSize: REPORT_PAGE_SIZE
+    })
+    for (const row of rows) {
+      if (row.productView) productViews.push(plainProductView(row.productView))
+    }
+  }
+  return productViews.sort((a, b) => String(a.offerId || '').localeCompare(String(b.offerId || '')))
+}
 
 function classify (product) {
   const statuses = product?.productStatus?.destinationStatuses || []
@@ -85,6 +178,48 @@ async function searchDisapproved (reportsClient, accountId, pageSize = 1000) {
   return rows
 }
 
+function classifyProductView (productView) {
+  const status = productView?.aggregatedReportingContextStatus
+  if (status === 'ELIGIBLE' || status === 4) return 'active'
+  if (status === 'ELIGIBLE_LIMITED' || status === 3) return 'limited'
+  if (status === 'PENDING' || status === 2) return 'pending'
+  if (status === 'NOT_ELIGIBLE_OR_DISAPPROVED' || status === 1) return 'disapproved'
+  return 'unknown'
+}
+
+function reportEnumName (value, values) {
+  if (typeof value === 'number') return values[value] || String(value)
+  return value || ''
+}
+
+function summarizeProductDiagnostics (productViews) {
+  const counts = { active: 0, limited: 0, pending: 0, disapproved: 0, unknown: 0, error: 0 }
+  const issueTally = new Map()
+  for (const productView of productViews) {
+    const status = classifyProductView(productView)
+    counts[status]++
+    for (const issue of (productView.itemIssues || [])) {
+      const code = issue.type?.code || ''
+      const attribute = issue.type?.canonicalAttribute || ''
+      const severity = reportEnumName(issue.severity?.aggregatedSeverity, {
+        1: 'DISAPPROVED',
+        2: 'DEMOTED',
+        3: 'PENDING'
+      })
+      const resolution = reportEnumName(issue.resolution, {
+        1: 'MERCHANT_ACTION',
+        2: 'PENDING_PROCESSING'
+      })
+      const key = `${severity}|${code}|${attribute}|${resolution}`
+      const current = issueTally.get(key) || { code, severity, resolution, attribute, count: 0 }
+      current.count++
+      issueTally.set(key, current)
+    }
+  }
+  const itemIssueTop = [...issueTally.values()].sort((a, b) => b.count - a.count)
+  return { counts, itemIssueTop }
+}
+
 function summarize (results) {
   const counts = { active: 0, pending: 0, disapproved: 0, unknown: 0, error: 0 }
   const issueTally = new Map()
@@ -102,4 +237,17 @@ function summarize (results) {
   return { counts, itemIssueTop }
 }
 
-module.exports = { fetchProductStatus, fetchAllStatuses, searchDisapproved, summarize, classify, collectIssues }
+module.exports = {
+  fetchProductStatus,
+  fetchAllStatuses,
+  searchDisapproved,
+  searchProductDiagnostics,
+  buildProductDiagnosticsQuery,
+  listDataSourceProductIds,
+  summarizeProductDiagnostics,
+  classifyProductView,
+  summarize,
+  classify,
+  collectIssues,
+  PRODUCT_DIAGNOSTIC_FIELDS
+}

@@ -4,7 +4,15 @@ jest.mock('../../actions/lib/syncState', () => ({
 }))
 
 const { isStale, getPushedAt } = require('../../actions/lib/syncState')
-const { fetchProductStatus, fetchAllStatuses, classify, collectIssues, summarize } = require('../../actions/lib/diagnostics')
+const {
+  fetchProductStatus,
+  fetchAllStatuses,
+  searchProductDiagnostics,
+  summarizeProductDiagnostics,
+  classify,
+  collectIssues,
+  summarize
+} = require('../../actions/lib/diagnostics')
 
 const approvedProduct = {
   name: 'accounts/123/products/en~US~abc',
@@ -121,6 +129,110 @@ describe('fetchAllStatuses', () => {
     const results = await fetchAllStatuses(productsClient, '123', ['a', 'b', 'c'], { fake: 'state' }, 'test')
     expect(results).toHaveLength(3)
     expect(results.every(r => r.status === 'active')).toBe(true)
+  })
+})
+
+describe('searchProductDiagnostics', () => {
+  test('scopes products by data source and requests detailed product_view diagnostics', async () => {
+    const dataSource = 'accounts/123/dataSources/456'
+    const productsClient = {
+      listProducts: jest.fn(async () => [[
+        {
+          name: 'accounts/123/products/en~US~owned',
+          offerId: 'owned',
+          dataSource
+        },
+        {
+          name: 'accounts/123/products/en~US~other',
+          offerId: 'other',
+          dataSource: 'accounts/123/dataSources/999'
+        },
+        {
+          name: 'accounts/123/products/en~US~not-requested',
+          offerId: 'not-requested',
+          dataSource
+        }
+      ]])
+    }
+    const reportsClient = {
+      search: jest.fn(async () => [[{
+        productView: {
+          id: 'en~US~owned',
+          offerId: 'owned',
+          aggregatedReportingContextStatus: 'ELIGIBLE_LIMITED',
+          statusPerReportingContext: [{ reportingContext: 'FREE_LISTINGS', approvedCountries: ['US'] }],
+          itemIssues: [{ type: { code: 'missing_attribute', canonicalAttribute: 'n:gender' } }]
+        }
+      }]])
+    }
+
+    const products = await searchProductDiagnostics(reportsClient, productsClient, '123', dataSource, ['owned'])
+
+    expect(productsClient.listProducts).toHaveBeenCalledWith({ parent: 'accounts/123', pageSize: 1000 })
+    expect(reportsClient.search).toHaveBeenCalledTimes(1)
+    const request = reportsClient.search.mock.calls[0][0]
+    expect(request.parent).toBe('accounts/123')
+    expect(request.pageSize).toBe(1000)
+    expect(request.query).toContain('FROM product_view')
+    expect(request.query).toContain("WHERE id IN ('en~US~owned')")
+    expect(request.query).not.toContain('en~US~other')
+    expect(request.query).not.toContain('en~US~not-requested')
+    expect(request.query).toContain('aggregated_reporting_context_status')
+    expect(request.query).toContain('status_per_reporting_context')
+    expect(request.query).toContain('item_issues')
+    expect(products).toEqual([expect.objectContaining({
+      offerId: 'owned',
+      aggregatedReportingContextStatus: 'ELIGIBLE_LIMITED'
+    })])
+  })
+
+  test('does not issue an empty MCQL request when the data source has no processed products', async () => {
+    const productsClient = { listProducts: jest.fn(async () => [[]]) }
+    const reportsClient = { search: jest.fn() }
+    await expect(searchProductDiagnostics(
+      reportsClient,
+      productsClient,
+      '123',
+      'accounts/123/dataSources/456'
+    )).resolves.toEqual([])
+    expect(reportsClient.search).not.toHaveBeenCalled()
+  })
+})
+
+describe('summarizeProductDiagnostics', () => {
+  test('counts report eligibility states and tallies detailed item issues', () => {
+    const productViews = [
+      { aggregatedReportingContextStatus: 'ELIGIBLE', itemIssues: [] },
+      {
+        aggregatedReportingContextStatus: 'ELIGIBLE_LIMITED',
+        itemIssues: [{
+          type: { code: 'missing_attribute', canonicalAttribute: 'n:gender' },
+          severity: { aggregatedSeverity: 'DISAPPROVED' },
+          resolution: 'MERCHANT_ACTION'
+        }]
+      },
+      {
+        aggregatedReportingContextStatus: 1,
+        itemIssues: [{
+          type: { code: 'missing_attribute', canonicalAttribute: 'n:gender' },
+          severity: { aggregatedSeverity: 1 },
+          resolution: 1
+        }]
+      },
+      { aggregatedReportingContextStatus: 'PENDING', itemIssues: [] },
+      { aggregatedReportingContextStatus: 'AGGREGATED_REPORTING_CONTEXT_STATUS_UNSPECIFIED' }
+    ]
+
+    expect(summarizeProductDiagnostics(productViews)).toEqual({
+      counts: { active: 1, limited: 1, pending: 1, disapproved: 1, unknown: 1, error: 0 },
+      itemIssueTop: [{
+        code: 'missing_attribute',
+        severity: 'DISAPPROVED',
+        resolution: 'MERCHANT_ACTION',
+        attribute: 'n:gender',
+        count: 2
+      }]
+    })
   })
 })
 

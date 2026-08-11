@@ -13,7 +13,7 @@ Sections **§4 (corrections)** and **§15 (security)** are non-negotiable.
 | Action | Type | Purpose |
 | --- | --- | --- |
 | `sync-products` | web (`require-adobe-auth: true`) | Map export rows → v1 `productInputs.insert` via a bounded concurrent pool. Retry-once on 5xx/429. Returns per-item results — one failure never aborts the batch. |
-| `diagnostics` | web (`require-adobe-auth: true`) | Called after a delay (Google processes inserts asynchronously — minutes). Reads processed status per offerId, or runs a `reports.search` sweep. Posts a digest to Slack + log. |
+| `diagnostics` | web (`require-adobe-auth: true`) | Returns detailed `product_view` status and item issues for processed products owned by the configured data source. Optional `offerIds` narrows the report. Posts a digest to Slack + log. |
 | `bootstrap-datasource` | admin (`web: no`) | One-off per environment. Creates a primary API data source and prints its ID. Store the ID in `.env` as `GMC_DATASOURCE_ID_{TEST\|PROD}`. |
 
 Package name in the manifest: `gmc-feed-sync`. Runtime: `nodejs:22`. All web
@@ -89,6 +89,37 @@ Each object in the POST payload's `products` can have the following fields.:
 | `minimum_order_quantity` | optional | Defaults to `1` (print-on-demand single unit) when the row omits it. |
 | `brand`, `availability`, `condition`, `gtin`/`gtins` | optional | Row-level overrides — see [`config/defaults.json`](./config/defaults.json). |
 
+## Product diagnostics
+
+Invoke `diagnostics` with `env` and, optionally, an `offerIds` array. The action
+uses the environment's configured `GMC_DATASOURCE_ID_{TEST|PROD}` and returns
+only products owned by that data source.
+
+Google's MCQL `product_view` does not expose a `data_source` field. To keep the
+scope exact, the action first calls `products.list`, retains products whose
+`dataSource` matches the configured source, and then queries those product IDs
+through `reports.search`. The MCQL request selects the documented product
+identity, category, price, inventory, status-per-reporting-context,
+`item_issues`, and click-potential fields. Long report result sets are handled
+by the Google clients' automatic pagination; product IDs are split into bounded
+MCQL `IN` batches.
+
+The response includes:
+
+- `dataSource`: the exact source resource used for filtering.
+- `counts`: active, limited, pending, disapproved, and unknown product totals.
+- `itemIssueTop`: issue counts grouped by code, canonical attribute, severity,
+  and resolution.
+- `results`: detailed `productView` objects using the API's camelCase response
+  field names, including `aggregatedReportingContextStatus`,
+  `statusPerReportingContext`, and `itemIssues`.
+- `missingOfferIds`: present when `offerIds` was requested; these products are
+  not yet visible as processed products in the configured data source.
+
+New or updated inputs can take several minutes to become processed products, so
+they might initially appear in `missingOfferIds` or be absent from a full-source
+report.
+
 ## Local dev
 
 - `aio app run` — local dev server; actions still deployed to Runtime.
@@ -102,6 +133,11 @@ Each object in the POST payload's `products` can have the following fields.:
   ```bash
   aio runtime action invoke gmc-feed-sync/bootstrap-datasource \
     --param env test --result
+  ```
+- Production diagnostics:
+  ```bash
+  aio runtime action invoke gmc-feed-sync/diagnostics \
+    --param env prod --result
   ```
 - Logs: `aio app logs --limit 20`, `aio runtime activation list`.
 
@@ -154,7 +190,7 @@ actions/
     concurrency.js                  # bounded worker pool
     insertWithRetry.js              # single insert + retry-once on 5xx/429
     googleError.js                  # gax/gRPC + REST → { code, status, reason, retriable }
-    diagnostics.js                  # products.get / reports.search → structured report
+    diagnostics.js                  # data-source ownership + MCQL product diagnostics
     imsAuth.js                      # validates incoming bearer tokens with Adobe IMS
     slack.js                        # digest POST to webhook (HTTPS-only)
     redact.js                       # log-safe stringifier
