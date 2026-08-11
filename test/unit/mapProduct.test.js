@@ -266,6 +266,19 @@ describe('mapProduct — variant attribute pass-through', () => {
     expect(out.productAttributes.gender).toBe('UNISEX')
   })
 
+  test('normalizes apparel defaults and preserves them in the v1 protobuf payload', () => {
+    const out = mapProduct({ ...goodRow, product_type: 'zazzle_shirt' })
+    expect(out.productAttributes.ageGroup).toBe('ADULT')
+    expect(out.productAttributes.gender).toBe('UNISEX')
+
+    const protos = require('@google-shopping/products/build/protos/protos.js')
+    const { ProductInput } = protos.google.shopping.merchant.products.v1
+    const encoded = ProductInput.encode(ProductInput.fromObject(out)).finish()
+    const decoded = ProductInput.decode(encoded)
+    expect(decoded.productAttributes.ageGroup).toBe(1)
+    expect(decoded.productAttributes.gender).toBe(3)
+  })
+
   test('omits material/color/size/age_group/gender when absent', () => {
     const out = mapProduct(goodRow)
     expect(out.productAttributes.material).toBeUndefined()

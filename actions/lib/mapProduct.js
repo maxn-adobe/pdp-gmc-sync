@@ -34,6 +34,16 @@ function sanitizeOfferId (id) {
   return stripped.replace(/:/g, '-')
 }
 
+// mandatory fields for some google product types
+const additionalProductProperties = {
+  "zazzle_shirt": {
+    ageGroup: defaults.age_group,
+    gender: defaults.gender,
+    color: defaults.color,
+    size: defaults.size
+  }
+}
+
 function mapProduct (row) {
   const offerId = sanitizeOfferId(row.product_id)
   if (!offerId) throw new Error('missing product_id')
@@ -53,6 +63,10 @@ function mapProduct (row) {
 
   const gpc = resolveGoogleProductCategory(row)
   if (gpc) attrs.googleProductCategory = gpc
+
+  if (row.product_type && additionalProductProperties[row.product_type]) {
+    Object.assign(attrs, additionalProductProperties[row.product_type])
+  }
 
   // Human-readable category label. The v1 ProductAttributes field is the
   // repeated string `productTypes` (there is no singular `productType`
@@ -86,15 +100,17 @@ function mapProduct (row) {
   // Variant attributes — optional pass-through, only set when the row
   // supplies them. material/color/size match the v1 proto field names
   // exactly. age_group/gender are proto enums (AgeGroup/Gender) whose
-  // accepted string values are the UPPER_SNAKE_CASE enum names, so the raw
-  // row value (e.g. "adult", "unisex") is upper-cased before assignment —
-  // verified empirically that lowercase enum strings are silently dropped
-  // by protobufjs.
+  // accepted string values are the UPPER_SNAKE_CASE enum names, so the row
+  // override or product-type default (e.g. "adult", "unisex") is upper-cased
+  // before assignment — verified empirically that lowercase enum strings are
+  // silently dropped by protobufjs.
   if (row.material) attrs.material = row.material
   if (row.color) attrs.color = row.color
   if (row.size) attrs.size = row.size
-  if (row.age_group) attrs.ageGroup = String(row.age_group).toUpperCase()
-  if (row.gender) attrs.gender = String(row.gender).toUpperCase()
+  const ageGroup = row.age_group || attrs.ageGroup
+  const gender = row.gender || attrs.gender
+  if (ageGroup) attrs.ageGroup = String(ageGroup).trim().toUpperCase()
+  if (gender) attrs.gender = String(gender).trim().toUpperCase()
 
   // custom_label_0 / shipping_label — optional pass-through only, no
   // composition logic (provenance still open per PRD §12.4). The v1 proto's
