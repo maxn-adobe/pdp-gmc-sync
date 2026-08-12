@@ -101,6 +101,39 @@ describe('link allowlist', () => {
   })
 })
 
+describe('additional_images validation', () => {
+  test('accepts a row with no additional_images field at all', () => {
+    expect(validateRow(good)).toBeNull()
+  })
+  test('accepts a well-formed additional_images array', () => {
+    const additional_images = ['https://cdn.example.com/x-2.png', 'https://cdn.example.com/x-3.png']
+    expect(validateRow({ ...good, additional_images })).toBeNull()
+  })
+  test('accepts an empty additional_images array', () => {
+    expect(validateRow({ ...good, additional_images: [] })).toBeNull()
+  })
+  test('rejects additional_images that is not an array', () => {
+    expect(validateRow({ ...good, additional_images: 'https://cdn.example.com/x-2.png' }))
+      .toMatch(/additional_images must be an array/)
+  })
+  test('rejects a non-string/empty entry', () => {
+    expect(validateRow({ ...good, additional_images: [''] })).toMatch(/additional_images\[0\] missing or invalid/)
+    expect(validateRow({ ...good, additional_images: [42] })).toMatch(/additional_images\[0\] missing or invalid/)
+  })
+  test('rejects a non-http(s) entry', () => {
+    expect(validateRow({ ...good, additional_images: ['javascript:alert(1)'] }))
+      .toMatch(/additional_images\[0\] must be an http\(s\) URL/)
+  })
+  test('rejects an overlong entry', () => {
+    const tooLong = 'https://cdn.example.com/' + 'x'.repeat(2000) + '.png'
+    expect(validateRow({ ...good, additional_images: [tooLong] })).toMatch(/additional_images\[0\] missing or invalid/)
+  })
+  test('one bad entry rejects the whole row, even alongside good entries', () => {
+    const additional_images = ['https://cdn.example.com/x-2.png', 'not-a-url']
+    expect(validateRow({ ...good, additional_images })).toMatch(/additional_images\[1\]/)
+  })
+})
+
 describe('validateRows', () => {
   test('partitions valid vs invalid', () => {
     const rows = [good, { ...good, product_id: '' }, { ...good, product_id: 'z2' }]

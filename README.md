@@ -76,6 +76,7 @@ Each object in the POST payload's `products` can have the following fields.:
 | `title` | ✓ | Truncated to 150 chars. |
 | `link` | ✓ | Full PDP URL. Must be HTTPS and its hostname must be in `pdpAllowedHosts`. |
 | `initial_pretty_preferred_view_url` or `image_link` | ✓ | HTTPS image URL. |
+| `additional_images` | optional | Array of HTTPS image URLs, distinct from the main image above. Capped at 10 (Google's limit) — see "Additional images" below. |
 | `price` | ✓ | Numeric or string (`"12.99"`, `"$12.99"`). Converted to integer micros. |
 | `description` | ✓ | String; 5000 chars max. Hard-required by Google's product data spec — missing/empty is now a validation rejection, not a silent default. |
 | `google_product_category` | ✓ (indirectly) | Mandatory — but resolved, not necessarily supplied directly. Provide `google_product_category` directly on the row **or** a `product_type` that has an entry in [`config/category-map.json`](./config/category-map.json). If neither resolves to a value, the row is rejected. An explicit `google_product_category` always wins over the `product_type` lookup. |
