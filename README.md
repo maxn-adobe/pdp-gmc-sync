@@ -96,14 +96,16 @@ uses the environment's configured `GMC_DATASOURCE_ID_{TEST|PROD}` and returns
 only products owned by that data source. For compatibility with Adobe action
 parameter serialization, a single comma-separated `offerIds` value is unpacked
 into individual IDs, though a JSON array remains the preferred request shape.
+At most 50 unique `offerIds` are accepted per call. This matches the
+`sync-products` chunk limit and keeps detailed diagnostics below Adobe
+Runtime's fixed 1 MB action-result limit.
 
 Google's MCQL `product_view` does not expose a `data_source` field. To keep the
 scope exact, the action first calls `products.list`, retains products whose
 `dataSource` matches the configured source, and then queries those product IDs
 through `reports.search`. The MCQL request selects the documented product
 identity, category, price, inventory, status-per-reporting-context,
-`item_issues`, and click-potential fields. Long report result sets are handled
-by the Google clients' automatic pagination; product IDs are split into bounded
+`item_issues`, and click-potential fields. Product IDs are split into bounded
 MCQL `IN` batches.
 
 The response includes:
@@ -124,6 +126,13 @@ The response includes:
   not yet visible as processed products in the configured data source. Google
   does not expose their unprocessed ProductInput through `products.get/list` or
   `reports.search`.
+- `requestedOfferCount`: total deduplicated input IDs.
+
+If even a valid request would produce a result larger than Runtime's 1 MB
+limit, diagnostics returns `413` before returning the oversized payload. Retry
+with fewer offer IDs. A full data-source sweep without `offerIds` is still
+supported, but large data sources can hit this guard; in that case call the
+action with explicit subsets of up to 50 IDs.
 
 Google exposes two distinct stages that should not be conflated. An accepted
 `ProductInput` awaiting creation of its processed `Product` is not readable:

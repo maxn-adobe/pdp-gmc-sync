@@ -40,11 +40,15 @@ describe('searchProductDiagnostics', () => {
 
     const products = await searchProductDiagnostics(reportsClient, productsClient, '123', dataSource, ['owned'])
 
-    expect(productsClient.listProducts).toHaveBeenCalledWith({ parent: 'accounts/123', pageSize: 1000 })
+    expect(productsClient.listProducts).toHaveBeenCalledWith(
+      { parent: 'accounts/123', pageSize: 1000, pageToken: undefined },
+      { autoPaginate: false }
+    )
     expect(reportsClient.search).toHaveBeenCalledTimes(1)
     const request = reportsClient.search.mock.calls[0][0]
     expect(request.parent).toBe('accounts/123')
     expect(request.pageSize).toBe(1000)
+    expect(request.pageToken).toBeUndefined()
     expect(request.query).toContain('FROM product_view')
     expect(request.query).toContain("WHERE id IN ('en~US~owned')")
     expect(request.query).not.toContain('en~US~other')
@@ -52,6 +56,7 @@ describe('searchProductDiagnostics', () => {
     expect(request.query).toContain('aggregated_reporting_context_status')
     expect(request.query).toContain('status_per_reporting_context')
     expect(request.query).toContain('item_issues')
+    expect(reportsClient.search.mock.calls[0][1]).toEqual({ autoPaginate: false })
     expect(products).toEqual([expect.objectContaining({
       offerId: 'owned',
       aggregatedReportingContextStatus: 'ELIGIBLE_LIMITED',
@@ -122,6 +127,72 @@ describe('searchProductDiagnostics', () => {
     )).resolves.toEqual([])
     expect(reportsClient.search).not.toHaveBeenCalled()
   })
+
+  test('manually follows Products page tokens until all requested offers are found', async () => {
+    const dataSource = 'accounts/123/dataSources/456'
+    const productsClient = {
+      listProducts: jest.fn()
+        .mockResolvedValueOnce([[], null, { nextPageToken: 'page-2' }])
+        .mockResolvedValueOnce([[
+          { name: 'accounts/123/products/en~US~wanted', offerId: 'wanted', dataSource }
+        ], null, { nextPageToken: 'page-3' }])
+    }
+    const reportsClient = {
+      search: jest.fn(async () => [[{
+        productView: { id: 'en~US~wanted', offerId: 'wanted' }
+      }]])
+    }
+
+    const products = await searchProductDiagnostics(
+      reportsClient,
+      productsClient,
+      '123',
+      dataSource,
+      ['wanted']
+    )
+
+    expect(productsClient.listProducts).toHaveBeenCalledTimes(2)
+    expect(productsClient.listProducts).toHaveBeenNthCalledWith(2, {
+      parent: 'accounts/123',
+      pageSize: 1000,
+      pageToken: 'page-2'
+    }, { autoPaginate: false })
+    expect(products.map(product => product.offerId)).toEqual(['wanted'])
+  })
+
+  test('manually follows Reports page tokens with auto-pagination disabled', async () => {
+    const dataSource = 'accounts/123/dataSources/456'
+    const productsClient = {
+      listProducts: jest.fn(async () => [[
+        { name: 'accounts/123/products/en~US~first', offerId: 'first', dataSource },
+        { name: 'accounts/123/products/en~US~second', offerId: 'second', dataSource }
+      ]])
+    }
+    const reportsClient = {
+      search: jest.fn()
+        .mockResolvedValueOnce([[
+          { productView: { id: 'en~US~first', offerId: 'first' } }
+        ], null, { nextPageToken: 'report-page-2' }])
+        .mockResolvedValueOnce([[
+          { productView: { id: 'en~US~second', offerId: 'second' } }
+        ], null, {}])
+    }
+
+    const products = await searchProductDiagnostics(
+      reportsClient,
+      productsClient,
+      '123',
+      dataSource,
+      ['first', 'second']
+    )
+
+    expect(reportsClient.search).toHaveBeenCalledTimes(2)
+    expect(reportsClient.search).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      pageToken: 'report-page-2'
+    }), { autoPaginate: false })
+    expect(products.map(product => product.offerId)).toEqual(['first', 'second'])
+  })
+
 })
 describe('summarizeProductDiagnostics', () => {
   test('counts report eligibility states and tallies detailed item issues', () => {

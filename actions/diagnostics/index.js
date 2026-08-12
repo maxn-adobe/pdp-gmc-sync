@@ -8,6 +8,9 @@ const { isValidImsToken } = require('../lib/imsAuth')
 const { redact } = require('../lib/redact')
 const { errorResponse, checkMissingRequestInputs } = require('../utils')
 
+const MAX_EXPLICIT_OFFER_IDS = 50
+const MAX_INLINE_RESPONSE_BYTES = 1024 * 1024
+
 function normalizeOfferIds (input) {
   if (input == null) return []
   let values = Array.isArray(input) ? input : [input]
@@ -60,8 +63,8 @@ async function main (params) {
 
   const requestedOfferIds = normalizeOfferIds(params.offerIds)
   const offerIds = requestedOfferIds.length ? requestedOfferIds : null
-  if (offerIds && offerIds.length > 5000) {
-    return errorResponse(400, 'offerIds too large; keep <= 5000 per diagnostics call', logger)
+  if (offerIds && offerIds.length > MAX_EXPLICIT_OFFER_IDS) {
+    return errorResponse(400, `offerIds too large; keep <= ${MAX_EXPLICIT_OFFER_IDS} per diagnostics call`, logger)
   }
 
   const report = {
@@ -93,6 +96,19 @@ async function main (params) {
     report.counts = counts
     report.itemIssueTop = itemIssueTop
     report.results = results
+
+    const responseBytes = Buffer.byteLength(JSON.stringify({ statusCode: 200, body: report }))
+    if (responseBytes > MAX_INLINE_RESPONSE_BYTES) {
+      logger.error(`diagnostics response too large: ${responseBytes} bytes`)
+      return errorResponse(
+        413,
+        offerIds
+          ? `diagnostics response is too large (${responseBytes} bytes); retry with fewer offerIds`
+          : `diagnostics response is too large (${responseBytes} bytes); request up to ${MAX_EXPLICIT_OFFER_IDS} offerIds instead of a full data-source sweep`,
+        logger
+      )
+    }
+
     const state = await statePromise
     await clearPushes(
       state,
@@ -117,4 +133,9 @@ async function main (params) {
   return { statusCode: 200, body: report }
 }
 
-module.exports = { main, normalizeOfferIds }
+module.exports = {
+  main,
+  normalizeOfferIds,
+  MAX_EXPLICIT_OFFER_IDS,
+  MAX_INLINE_RESPONSE_BYTES
+}

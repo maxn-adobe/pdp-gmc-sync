@@ -144,6 +144,40 @@ describe('diagnostics action IMS authorization', () => {
     }))
   })
 
+  test('passes through exactly 50 offerIds in one Google query', async () => {
+    const offerIds = Array.from({ length: 50 }, (_, index) => `offer-${index}`)
+    const res = await action.main({ ...validParams, offerIds })
+
+    expect(mockSearchProductDiagnostics).toHaveBeenCalledWith(
+      mockClients.reports,
+      mockClients.products,
+      '12345',
+      'accounts/12345/dataSources/67890',
+      offerIds
+    )
+    expect(res.statusCode).toBe(200)
+    expect(res.body.requestedOfferCount).toBe(50)
+  })
+
+  test('rejects more than 50 offerIds without querying Google', async () => {
+    const offerIds = Array.from({ length: 51 }, (_, index) => `offer-${index}`)
+    const res = await action.main({ ...validParams, offerIds })
+
+    expect(res.error?.statusCode).toBe(400)
+    expect(res.error.body.error).toContain('keep <= 50')
+    expect(mockSearchProductDiagnostics).not.toHaveBeenCalled()
+  })
+
+  test('rejects an oversized serialized response before clearing State', async () => {
+    const oversized = { ...productDiagnostics[0], title: 'x'.repeat(1024 * 1024) }
+    mockSearchProductDiagnostics.mockResolvedValueOnce([oversized])
+    const res = await action.main({ ...validParams, offerIds: ['offer-1'] })
+
+    expect(res.error?.statusCode).toBe(413)
+    expect(res.error.body.error).toContain('retry with fewer offerIds')
+    expect(mockClearPushes).not.toHaveBeenCalled()
+  })
+
   test('returns 401 without creating GMC clients for an invalid token', async () => {
     mockValidateTokenAllowList.mockResolvedValueOnce({ valid: false })
     const res = await action.main(validParams)

@@ -124,21 +124,32 @@ function productToDiagnostic (rawProduct) {
     statusPerReportingContext: productStatus.destinationStatuses || [],
     itemIssues: (productStatus.itemLevelIssues || []).map(productIssueToDiagnostic),
     dataSource: product.dataSource,
-    productAttributes: attributes,
-    productStatus,
     diagnosticSource: 'products'
   }
 }
 
 async function listDataSourceProducts (productsClient, accountId, dataSource, offerIds) {
-  const [products] = await productsClient.listProducts({
-    parent: `accounts/${accountId}`,
-    pageSize: PRODUCT_LIST_PAGE_SIZE
-  })
   const requested = offerIds?.length ? new Set(offerIds.map(String)) : null
-  return products
-    .filter(product => product.dataSource === dataSource)
-    .filter(product => !requested || requested.has(String(product.offerId)))
+  const found = new Set()
+  const matches = []
+  let pageToken
+  do {
+    const [products, , response] = await productsClient.listProducts({
+      parent: `accounts/${accountId}`,
+      pageSize: PRODUCT_LIST_PAGE_SIZE,
+      pageToken
+    }, { autoPaginate: false })
+    for (const product of products) {
+      const offerId = String(product.offerId)
+      if (product.dataSource === dataSource && (!requested || requested.has(offerId))) {
+        matches.push(product)
+        found.add(offerId)
+      }
+    }
+    if (requested && found.size === requested.size) break
+    pageToken = response?.nextPageToken || null
+  } while (pageToken)
+  return matches
 }
 
 async function listDataSourceProductIds (productsClient, accountId, dataSource, offerIds) {
@@ -148,8 +159,7 @@ async function listDataSourceProductIds (productsClient, accountId, dataSource, 
     .filter(Boolean))]
 }
 
-async function searchProductDiagnostics (reportsClient, productsClient, accountId, dataSource, offerIds) {
-  const products = await listDataSourceProducts(productsClient, accountId, dataSource, offerIds)
+async function diagnosticsForProducts (reportsClient, accountId, products) {
   const productsById = new Map(products
     .map(product => [productIdFromName(product.name), product])
     .filter(([id]) => id))
@@ -157,22 +167,33 @@ async function searchProductDiagnostics (reportsClient, productsClient, accountI
   const productViewsById = new Map()
   for (let index = 0; index < productIds.length; index += REPORT_ID_BATCH_SIZE) {
     const batch = productIds.slice(index, index + REPORT_ID_BATCH_SIZE)
-    const [rows] = await reportsClient.search({
-      parent: `accounts/${accountId}`,
-      query: buildProductDiagnosticsQuery(batch),
-      pageSize: REPORT_PAGE_SIZE
-    })
-    for (const row of rows) {
-      if (row.productView) {
-        const productView = plainProductView(row.productView)
-        productViewsById.set(productView.id, { ...productView, diagnosticSource: 'reports' })
+    const query = buildProductDiagnosticsQuery(batch)
+    let pageToken
+    do {
+      const [rows, , response] = await reportsClient.search({
+        parent: `accounts/${accountId}`,
+        query,
+        pageSize: REPORT_PAGE_SIZE,
+        pageToken
+      }, { autoPaginate: false })
+      for (const row of rows) {
+        if (row.productView) {
+          const productView = plainProductView(row.productView)
+          productViewsById.set(productView.id, { ...productView, diagnosticSource: 'reports' })
+        }
       }
-    }
+      pageToken = response?.nextPageToken || null
+    } while (pageToken)
   }
   const productViews = productIds.map(id => (
     productViewsById.get(id) || productToDiagnostic(productsById.get(id))
   ))
   return productViews.sort((a, b) => String(a.offerId || '').localeCompare(String(b.offerId || '')))
+}
+
+async function searchProductDiagnostics (reportsClient, productsClient, accountId, dataSource, offerIds) {
+  const products = await listDataSourceProducts(productsClient, accountId, dataSource, offerIds)
+  return diagnosticsForProducts(reportsClient, accountId, products)
 }
 
 function classifyProductView (productView) {
