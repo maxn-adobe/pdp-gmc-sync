@@ -202,7 +202,10 @@ Deploys and pushes are performed by the repo owner — not by this tooling.
 - Bearer tokens are extracted from the request header and validated with IMS.
   Invalid tokens return `401`; an IMS outage fails closed with `503`.
 - Incoming rows are allowlist-validated in [`validate.js`](./actions/lib/validate.js).
-  Chunks are capped at 50 products (Adobe I/O Runtime's 1MB payload limit).
+  Chunks are capped at 100 products, sized against measured per-chunk latency
+  to stay well under the 60s blocking web-action timeout (payload size isn't
+  the binding constraint at this scale — 100 rows is nowhere near Adobe I/O
+  Runtime's 1MB limit).
 - Outbound calls are HTTPS-only. `rejectUnauthorized: false` is banned.
 - `.env`, `.aio`, `console.json`, `*service-account*.json`, `credentials.json`,
   `*.pem` are all gitignored.
