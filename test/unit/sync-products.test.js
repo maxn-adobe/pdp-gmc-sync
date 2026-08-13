@@ -102,11 +102,11 @@ describe('sync-products action', () => {
     expect(res.error?.statusCode).toBe(400)
   })
 
-  test('400 when chunk exceeds MAX_CHUNK (50)', async () => {
-    const products = Array.from({ length: 51 }, (_, i) => ({ ...goodRow, product_id: `p-${i}` }))
+  test('400 when chunk exceeds MAX_CHUNK (100)', async () => {
+    const products = Array.from({ length: 101 }, (_, i) => ({ ...goodRow, product_id: `p-${i}` }))
     const res = await action.main({ ...validEnv, env: 'test', products })
     expect(res.error?.statusCode).toBe(400)
-    expect(res.error.body.error).toMatch(/50/)
+    expect(res.error.body.error).toMatch(/100/)
   })
 
   test('happy path returns the new response contract with pushedIds', async () => {

@@ -1,7 +1,7 @@
 const defaults = require('../../config/defaults.json')
 const { sanitizeOfferId, resolveGoogleProductCategory } = require('./mapProduct')
 
-const MAX_CHUNK = 50
+const MAX_CHUNK = 100
 const MAX_TITLE = 150
 const MAX_DESCRIPTION = 5000
 const MAX_URL = 2000
