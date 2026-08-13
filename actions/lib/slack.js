@@ -20,7 +20,7 @@ function formatDigest (report) {
   const { env, counts, offerCount, itemIssueTop } = report
   const lines = [
     `*GMC diagnostics* — env: \`${env}\` — offers examined: ${offerCount}`,
-    `Active: ${counts.active}  Pending: ${counts.pending}  Disapproved: ${counts.disapproved}  Unknown: ${counts.unknown}`
+    `Active: ${counts.active}  Limited: ${counts.limited || 0}  Pending: ${counts.pending}  Disapproved: ${counts.disapproved}  Unknown: ${counts.unknown}`
   ]
   if (itemIssueTop && itemIssueTop.length) {
     lines.push('*Top item-level issues:*')

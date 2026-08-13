@@ -17,20 +17,38 @@ jest.mock('@adobe/aio-lib-ims', () => ({
   getTokenData: mockGetTokenData
 }))
 
-const mockMakeClients = jest.fn(() => ({ reports: {} }))
+const mockClients = { reports: {}, products: {} }
+const mockMakeClients = jest.fn(() => mockClients)
 jest.mock('../../actions/lib/gmcClients', () => ({ makeClients: mockMakeClients }))
 jest.mock('../../actions/lib/config', () => ({
   ENVS: new Set(['test', 'prod']),
-  resolveAccount: jest.fn(() => '12345')
+  resolveAccount: jest.fn(() => '12345'),
+  resolveDataSource: jest.fn(() => 'accounts/12345/dataSources/67890')
 }))
 
-const mockSearchDisapproved = jest.fn(async () => [])
-jest.mock('../../actions/lib/diagnostics', () => ({
-  fetchAllStatuses: jest.fn(),
-  searchDisapproved: mockSearchDisapproved,
-  summarize: jest.fn()
+const productDiagnostics = [{
+  id: 'en~US~offer-1',
+  offerId: 'offer-1',
+  aggregatedReportingContextStatus: 'ELIGIBLE',
+  statusPerReportingContext: [],
+  itemIssues: []
+}]
+const mockSearchProductDiagnostics = jest.fn(async () => productDiagnostics)
+const mockSummarizeProductDiagnostics = jest.fn(() => ({
+  counts: { active: 1, limited: 0, pending: 0, disapproved: 0, unknown: 0, error: 0 },
+  itemIssueTop: []
 }))
-jest.mock('../../actions/lib/syncState', () => ({ initState: jest.fn(async () => null) }))
+jest.mock('../../actions/lib/diagnostics', () => ({
+  searchProductDiagnostics: mockSearchProductDiagnostics,
+  summarizeProductDiagnostics: mockSummarizeProductDiagnostics
+}))
+const mockState = { delete: jest.fn() }
+const mockInitState = jest.fn(async () => mockState)
+const mockClearPushes = jest.fn(async () => {})
+jest.mock('../../actions/lib/syncState', () => ({
+  initState: mockInitState,
+  clearPushes: mockClearPushes
+}))
 jest.mock('../../actions/lib/slack', () => ({
   postSlack: jest.fn(async () => {}),
   formatDigest: jest.fn(() => 'digest')
@@ -50,15 +68,114 @@ describe('diagnostics action IMS authorization', () => {
     mockValidateTokenAllowList.mockClear()
     mockGetTokenData.mockClear()
     mockMakeClients.mockClear()
-    mockSearchDisapproved.mockClear()
+    mockSearchProductDiagnostics.mockClear()
+    mockSummarizeProductDiagnostics.mockClear()
+    mockInitState.mockClear()
+    mockClearPushes.mockClear()
   })
 
   test('validates the bearer token before reading Merchant Center', async () => {
     const res = await action.main(validParams)
     expect(res.statusCode).toBe(200)
-    expect(mockValidateTokenAllowList).toHaveBeenCalledWith('stub', ['<da.live client_id>'])
+    expect(mockValidateTokenAllowList).toHaveBeenCalledWith('stub', expect.arrayContaining(['<da.live client_id>']))
     expect(mockMakeClients).toHaveBeenCalledTimes(1)
-    expect(mockSearchDisapproved).toHaveBeenCalledTimes(1)
+    expect(mockSearchProductDiagnostics).toHaveBeenCalledWith(
+      mockClients.reports,
+      mockClients.products,
+      '12345',
+      'accounts/12345/dataSources/67890',
+      null
+    )
+    expect(res.body).toEqual(expect.objectContaining({
+      accountId: '12345',
+      dataSource: 'accounts/12345/dataSources/67890',
+      offerCount: 1,
+      results: productDiagnostics
+    }))
+    expect(mockClearPushes).toHaveBeenCalledWith(
+      mockState,
+      'test',
+      '12345',
+      ['offer-1'],
+      expect.anything()
+    )
+  })
+
+  test('deduplicates requested offers and reports source-scoped offers not yet available', async () => {
+    const res = await action.main({ ...validParams, offerIds: ['offer-1', 'missing', 'offer-1'] })
+    expect(mockSearchProductDiagnostics).toHaveBeenCalledWith(
+      mockClients.reports,
+      mockClients.products,
+      '12345',
+      'accounts/12345/dataSources/67890',
+      ['offer-1', 'missing']
+    )
+    expect(res.body.requestedOfferCount).toBe(2)
+    expect(res.body.missingOfferIds).toEqual(['missing'])
+    expect(mockClearPushes).toHaveBeenCalledWith(
+      mockState,
+      'test',
+      '12345',
+      ['offer-1'],
+      expect.anything()
+    )
+  })
+
+  test('unpacks comma-separated pushedIds before querying Google', async () => {
+    mockSearchProductDiagnostics.mockResolvedValueOnce([])
+    mockSummarizeProductDiagnostics.mockReturnValueOnce({
+      counts: { active: 0, limited: 0, pending: 0, disapproved: 0, unknown: 0, error: 0 },
+      itemIssueTop: []
+    })
+    const offerIds = ['first', 'second', 'third']
+    const res = await action.main({ ...validParams, offerIds: [offerIds.join(',')] })
+
+    expect(mockSearchProductDiagnostics).toHaveBeenCalledWith(
+      mockClients.reports,
+      mockClients.products,
+      '12345',
+      'accounts/12345/dataSources/67890',
+      offerIds
+    )
+    expect(res.body).toEqual(expect.objectContaining({
+      requestedOfferCount: 3,
+      offerCount: 0,
+      missingOfferIds: offerIds
+    }))
+  })
+
+  test('passes through exactly 50 offerIds in one Google query', async () => {
+    const offerIds = Array.from({ length: 50 }, (_, index) => `offer-${index}`)
+    const res = await action.main({ ...validParams, offerIds })
+
+    expect(mockSearchProductDiagnostics).toHaveBeenCalledWith(
+      mockClients.reports,
+      mockClients.products,
+      '12345',
+      'accounts/12345/dataSources/67890',
+      offerIds
+    )
+    expect(res.statusCode).toBe(200)
+    expect(res.body.requestedOfferCount).toBe(50)
+  })
+
+  test('rejects more than 50 offerIds without querying Google', async () => {
+    const offerIds = Array.from({ length: 51 }, (_, index) => `offer-${index}`)
+    const res = await action.main({ ...validParams, offerIds })
+
+    expect(res.error?.statusCode).toBe(400)
+    expect(res.error.body.error).toContain('keep <= 50')
+    expect(mockSearchProductDiagnostics).not.toHaveBeenCalled()
+  })
+
+  test('rejects an oversized serialized response before clearing State', async () => {
+    const oversized = { ...productDiagnostics[0], title: 'x'.repeat(1024 * 1024) }
+    mockSearchProductDiagnostics.mockResolvedValueOnce([oversized])
+    const res = await action.main({ ...validParams, offerIds: ['offer-1'] })
+
+    expect(res.error?.statusCode).toBe(413)
+    expect(res.error.body.error).toContain('retry with fewer offerIds')
+    expect(mockClearPushes).not.toHaveBeenCalled()
   })
 
   test('returns 401 without creating GMC clients for an invalid token', async () => {

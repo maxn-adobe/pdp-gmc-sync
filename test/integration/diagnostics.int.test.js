@@ -27,13 +27,15 @@ describeIf('diagnostics :: integration (test account)', () => {
     expect(res.statusCode).toBe(200)
     expect(res.body).toHaveProperty('counts')
     expect(res.body).toHaveProperty('env', 'test')
+    expect(res.body).toHaveProperty('dataSource')
+    expect(Array.isArray(res.body.results)).toBe(true)
   })
 
-  test('per-offerId path returns per-product status', async () => {
+  test('selected-offer report identifies an offer that is not processed in the data source', async () => {
     const { main } = require('../../actions/diagnostics/index')
     const res = await main({ ...paramsFromEnv(), env: 'test', offerIds: ['does-not-exist'] })
     expect(res.statusCode).toBe(200)
-    expect(res.body.results?.length).toBe(1)
-    expect(['error', 'active', 'pending', 'disapproved', 'unknown']).toContain(res.body.results[0].status)
+    expect(res.body.results).toEqual([])
+    expect(res.body.missingOfferIds).toEqual(['does-not-exist'])
   })
 })

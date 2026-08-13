@@ -13,7 +13,7 @@ Sections **§4 (corrections)** and **§15 (security)** are non-negotiable.
 | Action | Type | Purpose |
 | --- | --- | --- |
 | `sync-products` | web (`require-adobe-auth: true`) | Map export rows → v1 `productInputs.insert` via a bounded concurrent pool. Retry-once on 5xx/429. Returns per-item results — one failure never aborts the batch. |
-| `diagnostics` | web (`require-adobe-auth: true`) | Called after a delay (Google processes inserts asynchronously — minutes). Reads processed status per offerId, or runs a `reports.search` sweep. Posts a digest to Slack + log. |
+| `diagnostics` | web (`require-adobe-auth: true`) | Returns detailed `product_view` status and item issues for processed products owned by the configured data source. Optional `offerIds` narrows the report. Posts a digest to Slack + log. |
 | `bootstrap-datasource` | admin (`web: no`) | One-off per environment. Creates a primary API data source and prints its ID. Store the ID in `.env` as `GMC_DATASOURCE_ID_{TEST\|PROD}`. |
 
 Package name in the manifest: `gmc-feed-sync`. Runtime: `nodejs:22`. All web
@@ -90,6 +90,70 @@ Each object in the POST payload's `products` can have the following fields.:
 | `minimum_order_quantity` | optional | Defaults to `1` (print-on-demand single unit) when the row omits it. |
 | `brand`, `availability`, `condition`, `gtin`/`gtins` | optional | Row-level overrides — see [`config/defaults.json`](./config/defaults.json). |
 
+## Product diagnostics
+
+Invoke `diagnostics` with `env` and, optionally, an `offerIds` array. The action
+uses the environment's configured `GMC_DATASOURCE_ID_{TEST|PROD}` and returns
+only products owned by that data source. For compatibility with Adobe action
+parameter serialization, a single comma-separated `offerIds` value is unpacked
+into individual IDs, though a JSON array remains the preferred request shape.
+At most 50 unique `offerIds` are accepted per call. This matches the
+`sync-products` chunk limit and keeps detailed diagnostics below Adobe
+Runtime's fixed 1 MB action-result limit.
+
+Google's MCQL `product_view` does not expose a `data_source` field. To keep the
+scope exact, the action first calls `products.list`, retains products whose
+`dataSource` matches the configured source, and then queries those product IDs
+through `reports.search`. The MCQL request selects the documented product
+identity, category, price, inventory, status-per-reporting-context,
+`item_issues`, and click-potential fields. Product IDs are split into bounded
+MCQL `IN` batches.
+
+The response includes:
+
+- `dataSource`: the exact source resource used for filtering.
+- `counts`: active, limited, pending, disapproved, and unknown product totals.
+- `itemIssueTop`: issue counts grouped by code, canonical attribute, severity,
+  and resolution.
+- `results`: detailed `productView` objects using the API's camelCase response
+  field names, including `aggregatedReportingContextStatus`,
+  `statusPerReportingContext`, and `itemIssues`. `diagnosticSource` is
+  `reports` when MCQL supplied the row. If the processed Product is already
+  available from `products.list` but has not reached `product_view` yet, the
+  action derives the same diagnostic fields from `productStatus` and sets
+  `diagnosticSource` to `products`; this includes real per-context
+  `pendingCountries` returned by Google.
+- `missingOfferIds`: present when `offerIds` was requested; these products are
+  not yet visible as processed products in the configured data source. Google
+  does not expose their unprocessed ProductInput through `products.get/list` or
+  `reports.search`.
+- `requestedOfferCount`: total deduplicated input IDs.
+
+If even a valid request would produce a result larger than Runtime's 1 MB
+limit, diagnostics returns `413` before returning the oversized payload. Retry
+with fewer offer IDs. A full data-source sweep without `offerIds` is still
+supported, but large data sources can hit this guard; in that case call the
+action with explicit subsets of up to 50 IDs.
+
+Google exposes two distinct stages that should not be conflated. An accepted
+`ProductInput` awaiting creation of its processed `Product` is not readable:
+the ProductInput API has only `insert`, `patch`, and `delete`. Once a processed
+Product exists, `products.list/get` can return real per-context
+`pendingCountries`, and `product_view` can return the aggregate `PENDING`
+status. Diagnostics reports only these Google-sourced statuses; it does not
+synthesize pending results for unprocessed inputs.
+
+After Google returns a product through either `products.list` or
+`product_view`, diagnostics deletes that offer's `pushed_at` timestamp from
+Adobe State because the propagation marker is no longer needed. Requested
+offers still listed in `missingOfferIds` remain cached for a later diagnostics
+call. State cleanup is best-effort: a State outage is logged but does not change
+the successful Merchant API response.
+
+New or updated inputs can take several minutes to become processed products, so
+they might initially appear in `missingOfferIds` or be absent from a full-source
+report.
+
 ## Local dev
 
 - `aio app run` — local dev server; actions still deployed to Runtime.
@@ -103,6 +167,11 @@ Each object in the POST payload's `products` can have the following fields.:
   ```bash
   aio runtime action invoke gmc-feed-sync/bootstrap-datasource \
     --param env test --result
+  ```
+- Production diagnostics:
+  ```bash
+  aio runtime action invoke gmc-feed-sync/diagnostics \
+    --param env prod --result
   ```
 - Logs: `aio app logs --limit 20`, `aio runtime activation list`.
 
@@ -155,7 +224,7 @@ actions/
     concurrency.js                  # bounded worker pool
     insertWithRetry.js              # single insert + retry-once on 5xx/429
     googleError.js                  # gax/gRPC + REST → { code, status, reason, retriable }
-    diagnostics.js                  # products.get / reports.search → structured report
+    diagnostics.js                  # data-source ownership + MCQL product diagnostics
     imsAuth.js                      # validates incoming bearer tokens with Adobe IMS
     slack.js                        # digest POST to webhook (HTTPS-only)
     redact.js                       # log-safe stringifier

@@ -1,12 +1,35 @@
 const { Core } = require('@adobe/aio-sdk')
 const { makeClients } = require('../lib/gmcClients')
-const { resolveAccount, ENVS } = require('../lib/config')
-const { fetchAllStatuses, searchDisapproved, summarize } = require('../lib/diagnostics')
-const { initState } = require('../lib/syncState')
+const { resolveAccount, resolveDataSource, ENVS } = require('../lib/config')
+const { searchProductDiagnostics, summarizeProductDiagnostics } = require('../lib/diagnostics')
+const { initState, clearPushes } = require('../lib/syncState')
 const { postSlack, formatDigest } = require('../lib/slack')
 const { isValidImsToken } = require('../lib/imsAuth')
 const { redact } = require('../lib/redact')
 const { errorResponse, checkMissingRequestInputs } = require('../utils')
+
+const MAX_EXPLICIT_OFFER_IDS = 100
+const MAX_INLINE_RESPONSE_BYTES = 1024 * 1024
+
+function normalizeOfferIds (input) {
+  if (input == null) return []
+  let values = Array.isArray(input) ? input : [input]
+  if (values.length === 1 && typeof values[0] === 'string') {
+    const packed = values[0].trim()
+    if (packed.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(packed)
+        if (Array.isArray(parsed)) values = parsed
+      } catch {
+        // Fall through to comma-separated action parameter handling.
+      }
+    }
+    if (values.length === 1 && typeof values[0] === 'string' && values[0].includes(',')) {
+      values = values[0].split(',')
+    }
+  }
+  return [...new Set(values.map(value => String(value).trim()).filter(Boolean))]
+}
 
 async function main (params) {
   const logger = Core.Logger('diagnostics', { level: params.LOG_LEVEL || 'info' })
@@ -28,38 +51,72 @@ async function main (params) {
     return errorResponse(503, 'unable to validate IMS token', logger)
   }
 
-  let accountId, clients
+  let accountId, dataSource, clients
   try {
     accountId = resolveAccount(params, params.env)
+    dataSource = resolveDataSource(params, params.env, accountId)
     clients = makeClients(params)
   } catch (e) {
     logger.error(`config/auth error: ${e.message}`)
     return errorResponse(500, 'server misconfigured — see logs', logger)
   }
 
-  const offerIds = Array.isArray(params.offerIds) ? params.offerIds.filter(Boolean).map(String) : null
-  if (offerIds && offerIds.length > 5000) {
-    return errorResponse(400, 'offerIds too large; keep <= 5000 per diagnostics call', logger)
+  const requestedOfferIds = normalizeOfferIds(params.offerIds)
+  const offerIds = requestedOfferIds.length ? requestedOfferIds : null
+  if (offerIds && offerIds.length > MAX_EXPLICIT_OFFER_IDS) {
+    return errorResponse(400, `offerIds too large; keep <= ${MAX_EXPLICIT_OFFER_IDS} per diagnostics call`, logger)
   }
 
-  const report = { env: params.env, accountId, offerCount: 0, counts: { active: 0, pending: 0, disapproved: 0, unknown: 0, error: 0 }, itemIssueTop: [], results: [] }
-
-  const state = await initState(logger)
+  const report = {
+    env: params.env,
+    accountId,
+    dataSource,
+    offerCount: 0,
+    counts: { active: 0, limited: 0, pending: 0, disapproved: 0, unknown: 0, error: 0 },
+    itemIssueTop: [],
+    results: []
+  }
 
   try {
-    if (offerIds && offerIds.length) {
-      const results = await fetchAllStatuses(clients.products, accountId, offerIds, state, params.env, undefined, logger)
-      const { counts, itemIssueTop } = summarize(results)
-      report.offerCount = results.length
-      report.counts = counts
-      report.itemIssueTop = itemIssueTop
-      report.results = results
-    } else {
-      const rows = await searchDisapproved(clients.reports, accountId)
-      report.offerCount = rows.length
-      report.counts.disapproved = rows.length
-      report.disapprovedSample = rows.slice(0, 50)
+    const statePromise = initState(logger)
+    const results = await searchProductDiagnostics(
+      clients.reports,
+      clients.products,
+      accountId,
+      dataSource,
+      offerIds
+    )
+    if (offerIds) {
+      const returnedOfferIds = new Set(results.map(product => String(product.offerId)))
+      report.requestedOfferCount = offerIds.length
+      report.missingOfferIds = offerIds.filter(offerId => !returnedOfferIds.has(offerId))
     }
+    const { counts, itemIssueTop } = summarizeProductDiagnostics(results)
+    report.offerCount = results.length
+    report.counts = counts
+    report.itemIssueTop = itemIssueTop
+    report.results = results
+
+    const responseBytes = Buffer.byteLength(JSON.stringify({ statusCode: 200, body: report }))
+    if (responseBytes > MAX_INLINE_RESPONSE_BYTES) {
+      logger.error(`diagnostics response too large: ${responseBytes} bytes`)
+      return errorResponse(
+        413,
+        offerIds
+          ? `diagnostics response is too large (${responseBytes} bytes); retry with fewer offerIds`
+          : `diagnostics response is too large (${responseBytes} bytes); request up to ${MAX_EXPLICIT_OFFER_IDS} offerIds instead of a full data-source sweep`,
+        logger
+      )
+    }
+
+    const state = await statePromise
+    await clearPushes(
+      state,
+      params.env,
+      accountId,
+      results.map(product => product.offerId).filter(Boolean),
+      logger
+    )
   } catch (e) {
     logger.error(`diagnostics fetch failed: ${e.message}`)
     return errorResponse(502, 'failed to read from Merchant Center', logger)
@@ -76,4 +133,9 @@ async function main (params) {
   return { statusCode: 200, body: report }
 }
 
-module.exports.main = main
+module.exports = {
+  main,
+  normalizeOfferIds,
+  MAX_EXPLICIT_OFFER_IDS,
+  MAX_INLINE_RESPONSE_BYTES
+}

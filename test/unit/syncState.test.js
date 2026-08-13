@@ -1,12 +1,13 @@
 const mockGet = jest.fn()
 const mockPut = jest.fn()
+const mockDelete = jest.fn()
 
 jest.mock('@adobe/aio-lib-state', () => ({
-  init: jest.fn(() => Promise.resolve({ get: mockGet, put: mockPut }))
+  init: jest.fn(() => Promise.resolve({ get: mockGet, put: mockPut, delete: mockDelete }))
 }))
 
 const stateLib = require('@adobe/aio-lib-state')
-const { initState, recordPushes, isStale, getPushedAt, pushedAtKey, TTL_SECONDS } = require('../../actions/lib/syncState')
+const { initState, recordPushes, clearPushes, isStale, getPushedAt, pushedAtKey, TTL_SECONDS } = require('../../actions/lib/syncState')
 
 const okProduct = (lastUpdateDate) => ({ productStatus: { lastUpdateDate } })
 
@@ -26,7 +27,7 @@ describe('initState', () => {
 
   test('returns the initialized client on success', async () => {
     const state = await initState()
-    expect(state).toEqual({ get: mockGet, put: mockPut })
+    expect(state).toEqual({ get: mockGet, put: mockPut, delete: mockDelete })
   })
 
   test('fails open (returns null) when State.init throws, without letting the error escape', async () => {
@@ -35,6 +36,32 @@ describe('initState', () => {
     const state = await initState(logger)
     expect(state).toBeNull()
     expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('no credentials'))
+  })
+})
+
+describe('clearPushes', () => {
+  beforeEach(() => { mockDelete.mockReset() })
+
+  test('deletes the encoded State key for each unique processed offer', async () => {
+    mockDelete.mockResolvedValue(null)
+    const state = { delete: mockDelete }
+    await clearPushes(state, 'test', '123', ['abc', 'def', 'abc'])
+    expect(mockDelete).toHaveBeenCalledTimes(2)
+    expect(mockDelete).toHaveBeenCalledWith(pushedAtKey('test', '123', 'abc'))
+    expect(mockDelete).toHaveBeenCalledWith(pushedAtKey('test', '123', 'def'))
+  })
+
+  test('does nothing when State is unavailable or no offers were processed', async () => {
+    await clearPushes(null, 'test', '123', ['abc'])
+    await clearPushes({ delete: mockDelete }, 'test', '123', [])
+    expect(mockDelete).not.toHaveBeenCalled()
+  })
+
+  test('logs a failed delete without rejecting diagnostics', async () => {
+    mockDelete.mockRejectedValueOnce(new Error('state unavailable'))
+    const logger = { error: jest.fn() }
+    await expect(clearPushes({ delete: mockDelete }, 'test', '123', ['abc'], logger)).resolves.toBeUndefined()
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('state unavailable'))
   })
 })
 

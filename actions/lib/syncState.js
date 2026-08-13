@@ -1,4 +1,5 @@
 const stateLib = require('@adobe/aio-lib-state')
+const { runPool } = require('./concurrency')
 
 // Comfortably past Google's documented "several minutes" reprocessing delay
 // after an insert/update — long enough that a miss here always means either
@@ -50,10 +51,21 @@ async function recordPushes (state, env, accountId, offerIds, logger) {
   })
 }
 
-// Shared by isStale below and diagnostics.js's isRecentlyPushed — both just
-// need "when did we last record a push for this offerId" and compare it
-// against a different reference point. Fails open (null) on a missing
-// offerId, unparseable value, or a State outage.
+async function clearPushes (state, env, accountId, offerIds, logger) {
+  if (!state || !offerIds.length) return
+  const uniqueOfferIds = [...new Set(offerIds.map(String))]
+  await runPool(uniqueOfferIds, async offerId => {
+    const key = pushedAtKey(env, accountId, offerId)
+    try {
+      await state.delete(key)
+    } catch (e) {
+      if (logger?.error) logger.error(`syncState.clearPushes failed for key=${key}: ${e.message}`)
+    }
+  })
+}
+
+// Returns when we last recorded a push for this offerId. Fails open (null) on
+// a missing offerId, unparseable value, or a State outage.
 async function getPushedAt (state, env, accountId, offerId, logger) {
   if (!state) return null
   const key = pushedAtKey(env, accountId, offerId)
@@ -85,4 +97,4 @@ async function isStale (state, env, accountId, offerId, product, logger) {
   return lastUpdateMs < pushedAt
 }
 
-module.exports = { initState, recordPushes, isStale, getPushedAt, pushedAtKey, TTL_SECONDS }
+module.exports = { initState, recordPushes, clearPushes, isStale, getPushedAt, pushedAtKey, TTL_SECONDS }
