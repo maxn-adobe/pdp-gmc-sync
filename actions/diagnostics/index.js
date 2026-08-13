@@ -8,7 +8,7 @@ const { isValidImsToken } = require('../lib/imsAuth')
 const { redact } = require('../lib/redact')
 const { errorResponse, checkMissingRequestInputs } = require('../utils')
 
-const MAX_EXPLICIT_OFFER_IDS = 50
+const MAX_EXPLICIT_OFFER_IDS = 100
 const MAX_INLINE_RESPONSE_BYTES = 1024 * 1024
 
 function normalizeOfferIds (input) {
