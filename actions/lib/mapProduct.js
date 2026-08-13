@@ -61,6 +61,11 @@ function mapProduct (row) {
     price: toMicros(row.price ?? row.base_price, defaults.currency || 'USD')
   }
 
+  // Images of the product
+  if (Array.isArray(row.additional_images) && row.additional_images.length) {
+    attrs.additionalImageLinks = row.additional_images.slice(0, 10)
+  }
+
   const gpc = resolveGoogleProductCategory(row)
   if (gpc) attrs.googleProductCategory = gpc
 

@@ -289,6 +289,55 @@ describe('mapProduct — variant attribute pass-through', () => {
   })
 })
 
+describe('mapProduct — additional_images', () => {
+  const goodRow = {
+    product_id: 'urn:aaid:sc:VA6C2:2d65b3da-35d9-50f4-999e-f7d252530e37',
+    title: 'A nice mug',
+    description: 'ceramic 11oz',
+    link: 'https://www.adobe.com/express/print/mug/a-nice-mug',
+    initial_pretty_preferred_view_url: 'https://cdn.example.com/mug.png',
+    price: '12.99'
+  }
+
+  test('passes through additional_images as additionalImageLinks', () => {
+    const out = mapProduct({
+      ...goodRow,
+      additional_images: ['https://cdn.example.com/mug-2.png', 'https://cdn.example.com/mug-3.png']
+    })
+    expect(out.productAttributes.additionalImageLinks).toEqual([
+      'https://cdn.example.com/mug-2.png',
+      'https://cdn.example.com/mug-3.png'
+    ])
+  })
+
+  test('omits additionalImageLinks when the row has none', () => {
+    const out = mapProduct(goodRow)
+    expect(out.productAttributes.additionalImageLinks).toBeUndefined()
+  })
+
+  test('omits additionalImageLinks when the row supplies an empty array', () => {
+    const out = mapProduct({ ...goodRow, additional_images: [] })
+    expect(out.productAttributes.additionalImageLinks).toBeUndefined()
+  })
+
+  test('truncates to 10 images (Google product data spec limit)', () => {
+    const images = Array.from({ length: 15 }, (_, i) => `https://cdn.example.com/mug-${i}.png`)
+    const out = mapProduct({ ...goodRow, additional_images: images })
+    expect(out.productAttributes.additionalImageLinks).toHaveLength(10)
+    expect(out.productAttributes.additionalImageLinks).toEqual(images.slice(0, 10))
+  })
+
+  test('round-trips through the real ProductAttributes proto without throwing', () => {
+    const protos = require('@google-shopping/products/build/protos/protos.js')
+    const { ProductAttributes } = protos.google.shopping.merchant.products.v1
+    const out = mapProduct({
+      ...goodRow,
+      additional_images: ['https://cdn.example.com/mug-2.png', 'https://cdn.example.com/mug-3.png']
+    })
+    expect(() => ProductAttributes.fromObject(out.productAttributes)).not.toThrow()
+  })
+})
+
 describe('mapProduct — customAttributes (printing_type / capacity / minimum_order_quantity)', () => {
   // printing_type, capacity, and minimum_order_quantity have no matching
   // top-level field anywhere in the installed @google-shopping/products v1

@@ -37,6 +37,16 @@ function validateLink (link) {
   if (!ALLOWED_HOSTS.has(url.hostname)) return `link host not in allowlist: ${url.hostname}`
   return null
 }
+function validateAdditionalImages (images) {
+  if (images == null) return null
+  if (!Array.isArray(images)) return 'additional_images must be an array'
+  for (let i = 0; i < images.length; i++) {
+    const img = images[i]
+    if (!isNonEmptyString(img, MAX_URL)) return `additional_images[${i}] missing or invalid`
+    if (!/^https?:\/\//i.test(img)) return `additional_images[${i}] must be an http(s) URL`
+  }
+  return null
+}
 
 function validateRow (row) {
   if (!row || typeof row !== 'object') return 'row is not an object'
@@ -59,6 +69,8 @@ function validateRow (row) {
       ? `google_product_category could not be resolved for product_type "${row.product_type}" — add it to config/category-map.json, or supply google_product_category directly on the row`
       : 'google_product_category missing — supply product_type (mapped in config/category-map.json) or google_product_category directly on the row'
   }
+  const additionalImagesErr = validateAdditionalImages(row.additional_images)
+  if (additionalImagesErr) return additionalImagesErr
   return null
 }
 
@@ -76,4 +88,4 @@ function validateRows (rows) {
   return { valid, invalid }
 }
 
-module.exports = { validateRow, validateRows, validateLink, MAX_CHUNK }
+module.exports = { validateRow, validateRows, validateLink, validateAdditionalImages, MAX_CHUNK }
