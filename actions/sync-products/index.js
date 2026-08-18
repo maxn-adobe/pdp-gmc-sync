@@ -1,6 +1,6 @@
 const { Core } = require("@adobe/aio-sdk");
 const { makeClients } = require("../lib/gmcClients");
-const { resolveAccount, resolveDataSource, ENVS } = require("../lib/config");
+const { resolveAccount, resolveDataSource } = require("../lib/config");
 const { mapProduct, sanitizeOfferId } = require("../lib/mapProduct");
 const { validateRows, MAX_CHUNK } = require("../lib/validate");
 const { insertWithRetry } = require("../lib/insertWithRetry");
@@ -13,12 +13,8 @@ const { errorResponse, checkMissingRequestInputs } = require("../utils");
 const DEFAULT_CONCURRENCY = 15;
 
 function areParamsValid(params, logger) {
-    const missing = checkMissingRequestInputs(params, ["env", "products"], ["Authorization"]);
+    const missing = checkMissingRequestInputs(params, ["products"], ["Authorization"]);
     if (missing) return errorResponse(400, missing, logger);
-
-    if (!ENVS.has(params.env)) {
-        return errorResponse(400, "env must be 'test' or 'prod'", logger);
-    }
 
     if (!Array.isArray(params.products) || params.products.length === 0) {
         return errorResponse(400, "products must be a non-empty array", logger);
@@ -54,8 +50,8 @@ async function main(params) {
     let accountId, dataSource, productInputs;
 
     try {
-        accountId = resolveAccount(params, params.env);
-        dataSource = resolveDataSource(params, params.env, accountId);
+        accountId = resolveAccount(params);
+        dataSource = resolveDataSource(params, accountId);
         ({ productInputs } = makeClients(params));
     } catch (e) {
         logger.error(`config/auth error: ${e.message}`);
@@ -115,10 +111,10 @@ async function main(params) {
     }));
 
     const state = await statePromise;
-    await recordPushes(state, params.env, accountId, pushedIds, logger);
+    await recordPushes(state, params.GMC_ENV, accountId, pushedIds, logger);
 
     const body = {
-        env: params.env,
+        env: params.GMC_ENV,
         dataSource,
         submitted: params.products.length,
         succeeded: succeeded.length,
@@ -127,7 +123,7 @@ async function main(params) {
         failedItems
     };
     logger.info(
-        `sync-products env=${params.env} submitted=${body.submitted} ok=${body.succeeded} failed=${body.failed}`
+        `sync-products env=${params.GMC_ENV} submitted=${body.submitted} ok=${body.succeeded} failed=${body.failed}`
     );
     return { statusCode: 200, body };
 }

@@ -21,16 +21,24 @@ unmapped `product_type` with no explicit override is a hard validation
 failure, not a silent Google-auto-assigns fallback.
 
 Keys must match the **raw** Zazzle `product_type` string as it appears in
-the DA tool export (e.g. `zazzle_shirt`, `zazzle_business_card`,
-`zazzle_mug`). The mapper does not normalize keys before lookup.
+the DA tool export (e.g. `zazzle_shirt`, `zazzle_businesscard`,
+`zazzle_mug`). The mapper does not normalize keys before lookup. Note the
+real key is `zazzle_businesscard` (no underscore before "card") — an earlier
+version of this doc incorrectly showed `zazzle_business_card`.
 
 Current contents:
 
 ```json
 {
   "zazzle_shirt": "212",
-  "zazzle_business_card": "3109",
-  "zazzle_mug": "2162"
+  "zazzle_businesscard": "3109",
+  "zazzle_mug": "2162",
+  "zazzle_bag": "5181",
+  "mojo_throwpillow": "2045",
+  "zazzle_foldedthankyoucard": "95",
+  "zazzle_invitation3": "2437",
+  "zazzle_print": "500044",
+  "zazzle_sticker": "4055"
 }
 ```
 

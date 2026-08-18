@@ -12,8 +12,9 @@ const paramsFromEnv = () => ({
   GMC_CLIENT_SECRET: process.env.GMC_CLIENT_SECRET,
   GMC_REFRESH_TOKEN: process.env.GMC_REFRESH_TOKEN,
   GMC_SERVICE_ACCOUNT_JSON: process.env.GMC_SERVICE_ACCOUNT_JSON,
-  GMC_MERCHANT_ACCOUNT_ID_TEST: process.env.GMC_MERCHANT_ACCOUNT_ID_TEST,
-  GMC_DATASOURCE_ID_TEST: process.env.GMC_DATASOURCE_ID_TEST,
+  GMC_ENV: 'test',
+  GMC_MERCHANT_ACCOUNT_ID: process.env.GMC_MERCHANT_ACCOUNT_ID,
+  GMC_DATASOURCE_ID: process.env.GMC_DATASOURCE_ID,
   SLACK_WEBHOOK_URL: process.env.SLACK_WEBHOOK_URL,
   __ow_headers: { authorization: imsAuthorization() }
 })
@@ -23,7 +24,7 @@ describeIf('diagnostics :: integration (test account)', () => {
 
   test('reports.search runs and returns a report body', async () => {
     const { main } = require('../../actions/diagnostics/index')
-    const res = await main({ ...paramsFromEnv(), env: 'test' })
+    const res = await main({ ...paramsFromEnv() })
     expect(res.statusCode).toBe(200)
     expect(res.body).toHaveProperty('counts')
     expect(res.body).toHaveProperty('env', 'test')
@@ -33,7 +34,7 @@ describeIf('diagnostics :: integration (test account)', () => {
 
   test('selected-offer report identifies an offer that is not processed in the data source', async () => {
     const { main } = require('../../actions/diagnostics/index')
-    const res = await main({ ...paramsFromEnv(), env: 'test', offerIds: ['does-not-exist'] })
+    const res = await main({ ...paramsFromEnv(), offerIds: ['does-not-exist'] })
     expect(res.statusCode).toBe(200)
     expect(res.body.results).toEqual([])
     expect(res.body.missingOfferIds).toEqual(['does-not-exist'])

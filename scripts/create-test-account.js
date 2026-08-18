@@ -93,11 +93,11 @@ async function main () {
   }
 
   console.log('\nNext steps:')
-  console.log(`  1. Add to .env:  GMC_MERCHANT_ACCOUNT_ID_TEST=${testId}   (no quotes)`)
+  console.log(`  1. Add to .env:  GMC_MERCHANT_ACCOUNT_ID=${testId}   (no quotes)`)
   console.log('  2. node scripts/check-account.js --env test   (confirm testAccount + access)')
   console.log('  3. aio app deploy')
   console.log('  4. aio runtime action invoke gmc-feed-sync/bootstrap-datasource --param env test --result')
-  console.log('     -> store returned dataSourceId in .env as GMC_DATASOURCE_ID_TEST, then redeploy')
+  console.log('     -> store returned dataSourceId in .env as GMC_DATASOURCE_ID, then redeploy')
   process.exit(0)
 }
 
