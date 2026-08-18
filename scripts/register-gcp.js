@@ -64,7 +64,7 @@ async function main () {
     throw new Error('GMC_SERVICE_ACCOUNT_JSON is not valid JSON: ' + e.message)
   }
 
-  const accountKey = args.env === 'test' ? 'GMC_MERCHANT_ACCOUNT_ID_TEST' : 'GMC_MERCHANT_ACCOUNT_ID_PROD'
+  const accountKey = 'GMC_MERCHANT_ACCOUNT_ID';
   const accountId = env[accountKey]
   if (!accountId || accountId === '__PLACEHOLDER__') {
     throw new Error(`${accountKey} not set in .env`)

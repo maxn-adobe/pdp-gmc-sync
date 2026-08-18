@@ -34,8 +34,8 @@ function loadEnv () {
 async function main () {
   const env = loadEnv()
 
-  if (!env.GMC_DATASOURCE_ID_TEST || env.GMC_DATASOURCE_ID_TEST === '__PLACEHOLDER__') {
-    throw new Error('GMC_DATASOURCE_ID_TEST not set in .env — run bootstrap-datasource --param env test first and store the id.')
+  if (!env.GMC_DATASOURCE_ID || env.GMC_DATASOURCE_ID=== '__PLACEHOLDER__') {
+    throw new Error('GMC_DATASOURCE_ID not set in .env — run bootstrap-datasource --param env test first and store the id.')
   }
 
   const samplePath = process.argv[2]
@@ -50,14 +50,14 @@ async function main () {
   const { main: syncProducts } = require(path.join(__dirname, '..', 'actions', 'sync-products', 'index.js'))
 
   const params = {
-    ...env, // GMC_SERVICE_ACCOUNT_JSON, GMC_MERCHANT_ACCOUNT_ID_TEST, GMC_DATASOURCE_ID_TEST, LOG_LEVEL, ...
+    ...env, // GMC_SERVICE_ACCOUNT_JSON, GMC_MERCHANT_ACCOUNT_ID, GMC_DATASOURCE_ID, LOG_LEVEL, ...
     env: 'test', // hard-coded: test only
     products,
     __ow_headers: { authorization: 'Bearer local-runner' },
     LOG_LEVEL: env.LOG_LEVEL || 'info'
   }
 
-  console.log(`Running sync-products against TEST account ${env.GMC_MERCHANT_ACCOUNT_ID_TEST}, data source ${env.GMC_DATASOURCE_ID_TEST}`)
+  console.log(`Running sync-products against TEST account ${env.GMC_MERCHANT_ACCOUNT_ID}, data source ${env.GMC_DATASOURCE_ID}`)
   console.log(`Submitting ${products.length} product(s) from ${path.relative(process.cwd(), samplePath)} ...\n`)
 
   const res = await syncProducts(params)

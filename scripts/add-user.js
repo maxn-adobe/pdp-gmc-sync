@@ -3,7 +3,7 @@
 // Use this to grant yourself (or teammates) UI access to the test account so it
 // shows up at merchants.google.com/mc/overview?a=<accountId>.
 //
-// Defaults to the TEST account (GMC_MERCHANT_ACCOUNT_ID_TEST) and ADMIN access.
+// Defaults to the TEST account (GMC_MERCHANT_ACCOUNT_ID) and ADMIN access.
 // ADMIN is needed to manage other users; use --access standard for view/manage
 // without user-management, or read_only for view-only.
 //
@@ -49,9 +49,9 @@ async function main () {
   const args = parseArgs(process.argv.slice(2))
   const env = loadEnv()
 
-  const accountId = args.account || env.GMC_MERCHANT_ACCOUNT_ID_TEST
+  const accountId = args.account || env.GMC_MERCHANT_ACCOUNT_ID
   if (!accountId || accountId === '__PLACEHOLDER__') {
-    throw new Error('no account id — pass --account <id> or set GMC_MERCHANT_ACCOUNT_ID_TEST in .env')
+    throw new Error('no account id — pass --account <id> or set GMC_MERCHANT_ACCOUNT_ID in .env')
   }
   const raw = env.GMC_SERVICE_ACCOUNT_JSON
   if (!raw || raw === '__PLACEHOLDER__') throw new Error('GMC_SERVICE_ACCOUNT_JSON not set in .env')

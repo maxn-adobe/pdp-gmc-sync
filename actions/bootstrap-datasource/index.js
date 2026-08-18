@@ -1,26 +1,22 @@
 const { Core } = require('@adobe/aio-sdk')
 const { makeClients } = require('../lib/gmcClients')
-const { resolveAccount, ENVS } = require('../lib/config')
+const { resolveAccount } = require('../lib/config')
 const { redact } = require('../lib/redact')
 
 async function main (params) {
   const logger = Core.Logger('bootstrap-datasource', { level: params.LOG_LEVEL || 'info' })
   logger.debug(redact(params))
 
-  if (!ENVS.has(params.env)) {
-    return { statusCode: 400, body: { error: "env must be 'test' or 'prod'" } }
-  }
-
   let accountId, dataSources
   try {
-    accountId = resolveAccount(params, params.env)
+    accountId = resolveAccount(params)
     ;({ dataSources } = makeClients(params))
   } catch (e) {
     logger.error(`config/auth error: ${e.message}`)
     return { statusCode: 500, body: { error: e.message } }
   }
 
-  const envLabel = String(params.env).toUpperCase()
+  const envLabel = String(params.GMC_ENV).toUpperCase()
   try {
     const [ds] = await dataSources.createDataSource({
       parent: `accounts/${accountId}`,
@@ -38,10 +34,10 @@ async function main (params) {
     return {
       statusCode: 200,
       body: {
-        env: params.env,
+        env: params.GMC_ENV,
         name: ds.name,
         dataSourceId,
-        note: `Store this ID in .env as GMC_DATASOURCE_ID_${envLabel}`
+        note: 'Store this ID as GMC_DATASOURCE_ID in this workspace\'s deployment secrets (.env.stage / .env.prod)'
       }
     }
   } catch (e) {

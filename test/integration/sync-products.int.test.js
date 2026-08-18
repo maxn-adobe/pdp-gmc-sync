@@ -10,8 +10,9 @@ const paramsFromEnv = () => ({
   LOG_LEVEL: process.env.LOG_LEVEL || 'info',
   GMC_SERVICE_ACCOUNT_JSON: process.env.GMC_SERVICE_ACCOUNT_JSON,
   GMC_GCP_PROJECT_ID: process.env.GMC_GCP_PROJECT_ID,
-  GMC_MERCHANT_ACCOUNT_ID_TEST: process.env.GMC_MERCHANT_ACCOUNT_ID_TEST,
-  GMC_DATASOURCE_ID_TEST: process.env.GMC_DATASOURCE_ID_TEST,
+  GMC_ENV: 'test',
+  GMC_MERCHANT_ACCOUNT_ID: process.env.GMC_MERCHANT_ACCOUNT_ID,
+  GMC_DATASOURCE_ID: process.env.GMC_DATASOURCE_ID,
   __ow_headers: { authorization: imsAuthorization() }
 })
 
@@ -30,7 +31,7 @@ describeIf('sync-products :: integration (test account)', () => {
 
   test('inserts a single product and returns per-item success', async () => {
     const { main } = require('../../actions/sync-products/index')
-    const res = await main({ ...paramsFromEnv(), env: 'test', products: [sampleRow] })
+    const res = await main({ ...paramsFromEnv(), products: [sampleRow] })
     expect(res.statusCode).toBe(200)
     expect(res.body.submitted).toBe(1)
     expect(res.body.succeeded).toBe(1)
@@ -39,7 +40,7 @@ describeIf('sync-products :: integration (test account)', () => {
 
   test('idempotent: re-inserting the same offerId still succeeds', async () => {
     const { main } = require('../../actions/sync-products/index')
-    const res = await main({ ...paramsFromEnv(), env: 'test', products: [sampleRow] })
+    const res = await main({ ...paramsFromEnv(), products: [sampleRow] })
     expect(res.body.succeeded).toBe(1)
   })
 })

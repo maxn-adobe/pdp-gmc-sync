@@ -33,10 +33,9 @@ function isNotRegistered (err) {
 
 async function main () {
   const env = loadEnv()
-  const useTest = process.argv.includes('--env') && process.argv[process.argv.indexOf('--env') + 1] === 'test'
-  const accountId = useTest ? env.GMC_MERCHANT_ACCOUNT_ID_TEST : env.GMC_MERCHANT_ACCOUNT_ID_PROD
+  const accountId = env.GMC_MERCHANT_ACCOUNT_ID;
   if (!accountId || accountId === '__PLACEHOLDER__') {
-    throw new Error(`${useTest ? 'GMC_MERCHANT_ACCOUNT_ID_TEST' : 'GMC_MERCHANT_ACCOUNT_ID_PROD'} not set in .env`)
+    throw new Error('GMC_MERCHANT_ACCOUNT_ID not set in .env')
   }
   const raw = env.GMC_SERVICE_ACCOUNT_JSON
   if (!raw || raw === '__PLACEHOLDER__') throw new Error('GMC_SERVICE_ACCOUNT_JSON not set in .env')

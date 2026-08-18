@@ -53,7 +53,7 @@ async function main () {
     LOG_LEVEL: env.LOG_LEVEL || 'info'
   }
 
-  console.log(`Diagnostics for TEST account ${env.GMC_MERCHANT_ACCOUNT_ID_TEST}, offerIds:\n  ${offerIds.join('\n  ')}\n`)
+  console.log(`Diagnostics for TEST account ${env.GMC_MERCHANT_ACCOUNT_ID}, offerIds:\n  ${offerIds.join('\n  ')}\n`)
 
   const res = await diagnostics(params)
   console.log(JSON.stringify(res, null, 2))

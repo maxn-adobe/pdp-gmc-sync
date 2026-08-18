@@ -5,7 +5,8 @@ const paramsFromEnv = () => ({
   LOG_LEVEL: process.env.LOG_LEVEL || 'info',
   GMC_SERVICE_ACCOUNT_JSON: process.env.GMC_SERVICE_ACCOUNT_JSON,
   GMC_GCP_PROJECT_ID: process.env.GMC_GCP_PROJECT_ID,
-  GMC_MERCHANT_ACCOUNT_ID_TEST: process.env.GMC_MERCHANT_ACCOUNT_ID_TEST
+  GMC_ENV: 'test',
+  GMC_MERCHANT_ACCOUNT_ID: process.env.GMC_MERCHANT_ACCOUNT_ID
 })
 
 describeIf('bootstrap-datasource :: integration (destructive, opt-in)', () => {
@@ -13,7 +14,7 @@ describeIf('bootstrap-datasource :: integration (destructive, opt-in)', () => {
 
   test('creates a data source in the test account', async () => {
     const { main } = require('../../actions/bootstrap-datasource/index')
-    const res = await main({ ...paramsFromEnv(), env: 'test' })
+    const res = await main({ ...paramsFromEnv() })
     expect(res.statusCode).toBe(200)
     expect(res.body.dataSourceId).toBeTruthy()
     expect(res.body.name).toMatch(/^accounts\/.+\/dataSources\/.+/)

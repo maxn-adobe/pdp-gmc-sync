@@ -58,7 +58,7 @@ jest.mock('../../actions/lib/redact', () => ({ redact: jest.fn(() => '{}') }))
 const action = require('../../actions/diagnostics/index')
 
 const validParams = {
-  env: 'test',
+  GMC_ENV: 'test',
   __ow_headers: { authorization: 'Bearer stub' }
 }
 

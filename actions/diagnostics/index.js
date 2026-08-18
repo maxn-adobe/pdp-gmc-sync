@@ -1,6 +1,6 @@
 const { Core } = require('@adobe/aio-sdk')
 const { makeClients } = require('../lib/gmcClients')
-const { resolveAccount, resolveDataSource, ENVS } = require('../lib/config')
+const { resolveAccount, resolveDataSource } = require('../lib/config')
 const { searchProductDiagnostics, summarizeProductDiagnostics } = require('../lib/diagnostics')
 const { initState, clearPushes } = require('../lib/syncState')
 const { postSlack, formatDigest } = require('../lib/slack')
@@ -35,12 +35,8 @@ async function main (params) {
   const logger = Core.Logger('diagnostics', { level: params.LOG_LEVEL || 'info' })
   logger.debug(redact(params))
 
-  const missing = checkMissingRequestInputs(params, ['env'], ['Authorization'])
+  const missing = checkMissingRequestInputs(params, [], ['Authorization'])
   if (missing) return errorResponse(400, missing, logger)
-
-  if (!ENVS.has(params.env)) {
-    return errorResponse(400, "env must be 'test' or 'prod'", logger)
-  }
 
   try {
     if (!(await isValidImsToken(params))) {
@@ -53,8 +49,8 @@ async function main (params) {
 
   let accountId, dataSource, clients
   try {
-    accountId = resolveAccount(params, params.env)
-    dataSource = resolveDataSource(params, params.env, accountId)
+    accountId = resolveAccount(params)
+    dataSource = resolveDataSource(params, accountId)
     clients = makeClients(params)
   } catch (e) {
     logger.error(`config/auth error: ${e.message}`)
@@ -68,7 +64,7 @@ async function main (params) {
   }
 
   const report = {
-    env: params.env,
+    env: params.GMC_ENV,
     accountId,
     dataSource,
     offerCount: 0,
@@ -112,7 +108,7 @@ async function main (params) {
     const state = await statePromise
     await clearPushes(
       state,
-      params.env,
+      params.GMC_ENV,
       accountId,
       results.map(product => product.offerId).filter(Boolean),
       logger
