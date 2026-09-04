@@ -38,7 +38,8 @@ Current contents:
   "zazzle_foldedthankyoucard": "95",
   "zazzle_invitation3": "2437",
   "zazzle_print": "500044",
-  "zazzle_sticker": "4055"
+  "zazzle_sticker": "4055",
+  "zazzle_flyer": "5884"
 }
 ```
 
@@ -47,6 +48,9 @@ Confirmation status of these 3 values (as of this session):
   session.
 - `zazzle_business_card` → `3109` and `zazzle_mug` → `2162` — **best-guess
   placeholders only**, never confirmed against a live Zazzle response.
+- `zazzle_flyer` → `5884` (Business & Industrial > Advertising & Marketing >
+  Brochures) — added for MWPW-206190. No dedicated "flyer" leaf exists in the
+  current Google taxonomy; Brochures is the closest printed-advertising leaf.
 
 Regardless of the above, the full Zazzle `product_type` → GMC
 `googleProductCategory` mapping still needs the ticket owner's input — see
