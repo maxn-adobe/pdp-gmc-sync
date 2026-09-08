@@ -55,6 +55,17 @@ jobs:
           AIO_PROJECT_WORKSPACE_ID: ${{ secrets.AIO_PROJECT_WORKSPACE_ID }}
           AIO_PROJECT_WORKSPACE_NAME: ${{ secrets.AIO_PROJECT_WORKSPACE_NAME }}
           AIO_PROJECT_WORKSPACE_DETAILS_SERVICES: ${{ secrets.AIO_PROJECT_WORKSPACE_DETAILS_SERVICES }}
+          # Runtime action inputs — app.config.yaml resolves these $VARS into each action's
+          # encrypted default params at deploy time. Without them the actions deploy with EMPTY
+          # GMC config and can't reach Merchant Center. GMC_ENV/LOG_LEVEL are non-secret literals.
+          GMC_ENV: prod
+          LOG_LEVEL: info
+          GMC_MERCHANT_ACCOUNT_ID: ${{ secrets.GMC_MERCHANT_ACCOUNT_ID }}
+          GMC_DATASOURCE_ID: ${{ secrets.GMC_DATASOURCE_ID }}
+          GMC_GCP_PROJECT_ID: ${{ secrets.GMC_GCP_PROJECT_ID }}
+          GMC_SERVICE_ACCOUNT_JSON: ${{ secrets.GMC_SERVICE_ACCOUNT_JSON }}
+          GMC_SERVICE_ACCOUNT_EMAIL: ${{ secrets.GMC_SERVICE_ACCOUNT_EMAIL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         uses: adobe/aio-apps-action@4.1.0
         with:
           os: ${{ matrix.os }}
