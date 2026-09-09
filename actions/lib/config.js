@@ -1,5 +1,5 @@
 const { isPlaceholder } = require("./auth");
-
+//Create a set of valid environments for Google Merchant Center (GMC) actions. The valid environments are "test" and "prod".
 const ENVS = new Set(["test", "prod"]);
 
 function assertValidGmcEnv(params) {
